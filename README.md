@@ -6,11 +6,13 @@ Made for the case where a message broker is used only as a wake-up doorbell.
 
 ## Status
 
-In-process stage. The public contract of both packages exists in code, with its
-documentation. What works today is the host inside its own process: `SignalHost` as
-`ISignals`, with every rule of signal delivery, deadlines, cancellation and the metrics
-below. The host does not listen yet, and `SignalClient` and the hosting package are not
-implemented; their members refuse with `NotSupportedException`. The first epic, the
+Host stage. The public contract of both packages exists in code, with its documentation.
+What works today is the host: `SignalHost` as `ISignals` inside its own process, with
+every rule of signal delivery, deadlines, cancellation and the metrics below, and
+listening over TCP after `Start`, speaking version 1 of the
+[protocol](docs/protocol.md) to any client that sends its lines. `SignalClient` and the
+hosting package are not implemented yet; their members refuse with
+`NotSupportedException`. The first epic, the
 library up to its first release, is under way in [current work](docs/work/README.md).
 
 ## Metrics
@@ -20,8 +22,9 @@ with the host as its scope. The instruments carry no tags.
 
 | Instrument | Kind | Unit | Counts |
 | --- | --- | --- | --- |
-| `moltaro.signals.subscriptions` | `UpDownCounter<long>` | `{subscription}` | Subscriptions open on the host |
-| `moltaro.signals.sets` | `Counter<long>` | `{set}` | Sets the host applied |
+| `moltaro.signals.connections` | `UpDownCounter<long>` | `{connection}` | Client connections whose `HELLO` was accepted and that are open; a connection leaves it when its socket is closed |
+| `moltaro.signals.subscriptions` | `UpDownCounter<long>` | `{subscription}` | Subscriptions open on the host, in-process and remote |
+| `moltaro.signals.sets` | `Counter<long>` | `{set}` | Sets the host applied, in-process and remote |
 | `moltaro.signals.coalesced` | `Counter<long>` | `{signal}` | Once per (key, group), ancestors included: a set that found a signal already pending. A signal handed on is not counted here |
 | `moltaro.signals.deliveries` | `Counter<long>` | `{signal}` | Signals handed to a member: by a set or a signal handed on to a waiting member, or a pending signal taken by a wait. `Joined` is not counted |
 | `moltaro.signals.handed_on` | `Counter<long>` | `{signal}` | Signals handed on because a busy member left while its group on that key kept at least one member: to a waiting member, or as a pending signal. A busy member that was the last of its group on that key hands nothing on and is not counted |

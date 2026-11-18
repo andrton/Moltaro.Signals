@@ -119,6 +119,9 @@ not committed. S6 moves the final figures into `README.md`.
 | S2 | Allocated per wait, without deadline or token / with both | 96 / 232 bytes | Reported | The same | 18 November 2026 |
 | S2 | Set of a key of one / three segments, members on one level | 181 / 328 ns, 0 bytes allocated | Reported | The same | 18 November 2026 |
 | S2 | Sets per second on 2 / 4 / 8 threads, in total | 3.3 / 2.4 / 2.8 million | Reported | The same | 18 November 2026 |
+| S3 | `SET` lines applied per second from one connection, pipelined over loopback | 0.73 million | Reported | The same | 18 November 2026 |
+| S3 | Allocated per `SET` over loopback | 0.7 bytes | Reported | The same | 18 November 2026 |
+| S3 | In-process set to wake, again on the build of S3 | p50 1.4 µs, p99 2.4 µs | p50 under 50 µs: met | The same | 18 November 2026 |
 
 Rates and latencies on one laptop with mixed core types vary between runs, by a factor of
 five in the review of S2; every judged target was met in every run. The allocation and

@@ -1,7 +1,8 @@
 # Moltaro.Signals — concept
 
-Status: agreed concept, 18 November 2026. The public contract exists in code, and the
-host works inside its own process. [README.md](../README.md) says what works today.
+Status: agreed concept, 18 November 2026. The public contract exists in code; the host
+works inside its own process and listens over TCP. [README.md](../README.md) says what
+works today.
 
 ## 1. Where it comes from
 
@@ -153,6 +154,7 @@ these principles are decided:
 | `HELLO <protocol-version> <token>` | First line; wrong token or version closes the connection |
 | `SUB <sid> <key> <group>` | Open subscription `<sid>` (a client-chosen number) |
 | `WAIT <sid>` | Arm the subscription; ends its busy state |
+| `UNWAIT <sid>` | End the wait of the subscription; answered after any `SIG` already sent |
 | `UNSUB <sid>` | Close the subscription (hands its signal on if busy) |
 | `SET <rid> <key>` | Set; `<rid>` is a request id echoed in the reply |
 | `PING` | Heartbeat |
