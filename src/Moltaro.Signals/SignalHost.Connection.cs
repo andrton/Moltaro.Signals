@@ -56,7 +56,7 @@ public sealed partial class SignalHost
         // The open members by their <sid>. Guarded by the host's lock.
         private readonly Dictionary<long, RemoteMember> _members = [];
 
-        // FlushAsync as a delegate made once, so that starting a flush allocates none.
+        // FlushAsync as a delegate made once, so that starting a flush makes no new delegate.
         private readonly Func<Task> _flushAsync;
 
         private readonly TaskCompletionSource _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -115,8 +115,9 @@ public sealed partial class SignalHost
             }
         }
 
-        // Under the host's lock: begins the end of the connection, unless it has begun; from here it takes no more lines
-        // and no more output. True when this call began the end; the caller then runs FinishEndAsync after the lock.
+        // Under the host's lock: begins the end of the connection, unless it has begun; after the section that begins it,
+        // it takes no more lines and no more output. True when this call began the end; the caller then runs
+        // FinishEndAsync after the lock.
         internal bool BeginEnd()
         {
             if (_ending)
