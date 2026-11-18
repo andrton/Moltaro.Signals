@@ -250,10 +250,11 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
         _localEndPoint = (IPEndPoint)listener.LocalEndPoint!;
 
         // The loop outlives the call, so it does not capture the execution context of the caller; nor does anything it
-        // starts for its connections.
+        // starts for its connections. It runs on the thread pool, never on the caller's thread or synchronization
+        // context, so Start returns once the socket is bound, even when accept fails at once and keeps failing.
         using AsyncFlowControl? flow = ExecutionContext.IsFlowSuppressed() ? null : ExecutionContext.SuppressFlow();
 
-        _accepting = AcceptAsync(listener);
+        _accepting = Task.Run(() => AcceptAsync(listener));
     }
 
     /// <summary>
@@ -546,9 +547,6 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     // closed with nothing written.
     private async Task AcceptAsync(Socket listener)
     {
-        // Start returns once the socket is bound, even when accept fails at once and keeps failing.
-        await Task.Yield();
-
         while (true)
         {
             Socket socket;
