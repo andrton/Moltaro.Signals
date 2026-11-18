@@ -6,10 +6,25 @@ Made for the case where a message broker is used only as a wake-up doorbell.
 
 ## Status
 
-Contract stage. The public contract of both packages exists in code, with its
-documentation; only the checks of options, names and arguments work, and the rest is not
-implemented yet. Nothing below works today. The first epic, the
+In-process stage. The public contract of both packages exists in code, with its
+documentation. What works today is the host inside its own process: `SignalHost` as
+`ISignals`, with every rule of signal delivery, deadlines, cancellation and the metrics
+below. The host does not listen yet, and `SignalClient` and the hosting package are not
+implemented; their members refuse with `NotSupportedException`. The first epic, the
 library up to its first release, is under way in [current work](docs/work/README.md).
+
+## Metrics
+
+Each `SignalHost` creates its own `Meter` named `Moltaro.Signals` (`SignalHost.MeterName`),
+with the host as its scope. The instruments carry no tags.
+
+| Instrument | Kind | Unit | Counts |
+| --- | --- | --- | --- |
+| `moltaro.signals.subscriptions` | `UpDownCounter<long>` | `{subscription}` | Subscriptions open on the host |
+| `moltaro.signals.sets` | `Counter<long>` | `{set}` | Sets the host applied |
+| `moltaro.signals.coalesced` | `Counter<long>` | `{signal}` | Once per (key, group), ancestors included: a set that found a signal already pending. A signal handed on is not counted here |
+| `moltaro.signals.deliveries` | `Counter<long>` | `{signal}` | Signals handed to a member: by a set or a signal handed on to a waiting member, or a pending signal taken by a wait. `Joined` is not counted |
+| `moltaro.signals.handed_on` | `Counter<long>` | `{signal}` | Signals handed on because a busy member left while its group on that key kept at least one member: to a waiting member, or as a pending signal. A busy member that was the last of its group on that key hands nothing on and is not counted |
 
 ## What it is, and what it is not
 

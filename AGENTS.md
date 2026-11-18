@@ -12,9 +12,8 @@ protocol; code inside the host process uses the same interface without a socket.
 carries no data: it only says "look now", coalesces per key and group, and wakes one
 waiting member of each group on each key it sets.
 
-What exists today is the **concept** and the **public contract** in code, in which only
-its checks work; the epic in [current work](docs/work/README.md) builds the
-rest. The [concept](docs/concept.md) is the authority for what the library guarantees: its
+What exists today is the **concept**, the **public contract** in code and the host inside
+its own process; the epic in [current work](docs/work/README.md) builds the rest. The [concept](docs/concept.md) is the authority for what the library guarantees: its
 semantics, its decisions D1–D15 and its non-goals. `README.md` says what works today; a
 feature is delivered when the README says so.
 
@@ -26,7 +25,7 @@ This repository is public. Nothing specific to a private product goes into it.
 | --- | --- |
 | `src` | The solution, every project and the build settings. Run `dotnet` from here |
 | `docs/concept.md` | Where the library comes from, its semantics, protocol principles, decisions and quality bar |
-| `docs/explanations` | Explanations of the architecture and of how the library works, each as Markdown and as HTML. Created with the first explanation |
+| `docs/explanations` | Explanations of the architecture and of how the library works, each as Markdown and as HTML |
 | `docs/work` | Working documents: the epics in progress, the development process, branches and releases, exceptions to the rules, open questions |
 
 The projects:
@@ -38,7 +37,7 @@ The projects:
 | `src/Moltaro.Signals.Samples` | Runnable samples of intended use, including a standalone host of a few lines |
 | `src/*.Tests` | Tests, one project per library |
 | `src/Moltaro.Signals.TestSupport` | Code that two or more test projects need, as "Tests And Samples" says. Never shipped; no tests |
-| `src/Moltaro.Signals.Measurements` | Planned with signal delivery: the benchmark program of the concept's performance targets. Started by hand; never shipped and not a test project |
+| `src/Moltaro.Signals.Measurements` | The benchmark program of the concept's performance targets. Started by hand; never shipped and not a test project |
 
 The repository root holds only repository-level files. Code never lives there.
 

@@ -110,7 +110,17 @@ not committed. S6 moves the final figures into `README.md`.
 
 | Sprint | Scenario | Figure | Target | Machine | Date |
 | --- | --- | --- | --- | --- | --- |
-| — | — | — | — | — | — |
+| S2 | In-process set to wake, 100,000 wakes | p50 1.5 µs, p99 3.4 µs, maximum 176 µs | p50 under 50 µs: met | Intel Core i9-13900H, 20 logical processors, Windows 10.0.26300, .NET 10.0.15, Release | 18 November 2026 |
+| S2 | Allocated per wake of a waiting member | 96 bytes | Reported | The same | 18 November 2026 |
+| S2 | Sets per second on one thread, mostly coalesced | 10.6 million | At least 100,000: met | The same | 18 November 2026 |
+| S2 | Retained per (key, group), without subscriptions / per subscription | 190 / 142 bytes | Reported | The same | 18 November 2026 |
+| S2 | Change of retained memory over 1,000,000 sets | 0 bytes | Flat: met | The same | 18 November 2026 |
+| S2 | Allocated per wait, without deadline or token / with both | 96 / 232 bytes | Reported | The same | 18 November 2026 |
+| S2 | Set of a key of one / three segments, members on one level | 181 / 328 ns, 0 bytes allocated | Reported | The same | 18 November 2026 |
+| S2 | Sets per second on 2 / 4 / 8 threads, in total | 3.3 / 2.4 / 2.8 million | Reported | The same | 18 November 2026 |
+
+Figures of one laptop with mixed core types vary between runs, by up to a factor of three
+for rates and latencies; the allocation and memory figures do not.
 
 ## Open questions
 

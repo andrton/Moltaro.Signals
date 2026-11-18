@@ -1,7 +1,7 @@
 # Moltaro.Signals — concept
 
-Status: agreed concept, 18 November 2026. The public contract exists in code; the
-behavior is not implemented yet. [README.md](../README.md) says what works today.
+Status: agreed concept, 18 November 2026. The public contract exists in code, and the
+host works inside its own process. [README.md](../README.md) says what works today.
 
 ## 1. Where it comes from
 
@@ -241,11 +241,17 @@ group's presence, TLS, clients in other languages.
   - Loopback TCP integration tests cover connect, heartbeat loss, host restart (`Joined`),
     leaving while busy (hand on) and limits.
   - No fixed sleeps in tests; they wait for observed events.
-- **Performance targets** (measured by a separate benchmark program, not gating tests):
-  - in-process set to wake under 50 µs;
-  - loopback TCP set to wake p99 under 1 ms;
-  - at least 100 000 sets per second on one core, most of them coalesced;
-  - memory grows with keys × groups + subscriptions only.
+- **Performance targets** (measured by a separate benchmark program, not gating tests),
+  judged as the owner decided on 18 November 2026:
+  - in-process set to wake under 50 µs, judged at p50; p99 and the maximum are reported;
+  - loopback TCP set to wake p99 under 1 ms, with the host and its clients in one
+    process;
+  - at least 100 000 sets per second on one core, most of them coalesced, judged
+    in-process: one thread setting ten keys, each with one group whose member wakes for
+    at most one set in a hundred; the rate over loopback is reported, not judged;
+  - memory grows with keys × groups + subscriptions only: the bytes retained per
+    (key, group) and per subscription are reported, and a test of signal delivery asserts
+    that a group with no members keeps nothing.
 - **Observability.** `System.Diagnostics.Metrics` counters: connections, subscriptions,
   sets, coalesced sets, deliveries, signals handed on. Log lines for connect and
   disconnect.
