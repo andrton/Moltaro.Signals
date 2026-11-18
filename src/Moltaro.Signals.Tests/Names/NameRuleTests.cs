@@ -43,10 +43,7 @@ public sealed class NameRuleTests
     {
         await using var host = new SignalHost(LoopbackOptions.Host());
 
-        // Only an ArgumentException refuses a name; what the call then does is not the subject of this test.
-        Exception? error = Record.Exception(() => host.Subscribe(name, name).Dispose());
-
-        Assert.IsNotAssignableFrom<ArgumentException>(error);
+        host.Subscribe(name, name).Dispose();
     }
 
     [Fact]

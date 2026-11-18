@@ -1,8 +1,13 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <Description>Remote auto-reset events with consumer groups for .NET: an in-memory host embedded in one process, a client for other processes over one TCP connection, and the same ISignals interface for both. A signal carries no data, coalesces per key and group, and wakes one waiting member of each group on each key it sets.</Description>
+    <Description>Remote signals with consumer groups for .NET: an in-memory host embedded in one process, a client for other processes over one TCP connection, and the same ISignals interface for both. A signal carries no data, coalesces per key and group, and wakes one waiting member of each group on each key it sets.</Description>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Signal delivery has no public surface: its tests address it directly. -->
+    <InternalsVisibleTo Include="Moltaro.Signals.Tests" />
+  </ItemGroup>
 
 </Project>

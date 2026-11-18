@@ -44,7 +44,7 @@ public interface ISignalSubscription : IDisposable
     /// the call returns <c>Joined</c> at once. A <c>Joined</c> is due after <see cref="ISignals.Subscribe"/> and after
     /// every reopening on a new connection, until a wait returns it. A remote subscription is open only once the host
     /// has answered its opening; until then the call waits as rule 5 says. It does not return <c>Joined</c> before
-    /// that answer, because only an open member makes a set during the pass raise the event; a set to a group
+    /// that answer, because only an open member makes a set during the pass leave a signal pending; a set to a group
     /// without members is not remembered.
     /// </description></item>
     /// <item><description>
@@ -52,9 +52,9 @@ public interface ISignalSubscription : IDisposable
     /// without asking the host, and changes nothing.
     /// </description></item>
     /// <item><description>
-    /// <b>Signaled.</b> Otherwise the call asks the host. If the group's event is raised, it is reset and the call
-    /// returns <see cref="SignalWaitResultEnum.Signaled"/>; otherwise the member waits until a signal is handed to
-    /// it.
+    /// <b>Signaled.</b> Otherwise the call asks the host. If a signal is pending for its group on its key, the member
+    /// takes it and the call returns <see cref="SignalWaitResultEnum.Signaled"/>; otherwise the member waits until a
+    /// signal is handed to it.
     /// </description></item>
     /// <item><description>
     /// <b>Deadline and cancellation.</b> When <paramref name="until"/> is reached or the token is cancelled, the
@@ -72,17 +72,17 @@ public interface ISignalSubscription : IDisposable
     /// </description></item>
     /// </list>
     /// <para>
-    /// After <c>Joined</c> or <c>Signaled</c> the member is busy until its next wait: a set meanwhile raises the
-    /// group's event, so the next call returns at once, and leaving meanwhile hands the signal on. After a wait that
-    /// ended under rule 4 without a signal, the member holds no signal: a set raises the group's event, and leaving
-    /// hands nothing on. A call that ends under rule 2 or 5, or whose token was already cancelled, leaves the member
+    /// After <c>Joined</c> or <c>Signaled</c> the member is busy until its next wait: a set meanwhile leaves a signal
+    /// pending, so the next call returns at once, and leaving meanwhile hands the signal on. After a wait that ended
+    /// under rule 4 without a signal, the member holds no signal: a set leaves a signal pending, and leaving hands
+    /// nothing on. A call that ends under rule 2 or 5, or whose token was already cancelled, leaves the member
     /// as it was.
     /// </para>
     /// <para>
     /// Handing a signal on is handled as a set of that one (key, group), without its ancestors: a member of the
-    /// group on that key that waits receives it; otherwise the event becomes raised; when the leaving member was the
-    /// last of its group on that key, nothing is kept. So an event is never raised while a member of its group
-    /// waits. The instrument <c>moltaro.signals.sets</c> does not count a signal handed on.
+    /// group on that key that waits receives it; otherwise it becomes pending; when the leaving member was the last
+    /// of its group on that key, nothing is kept. So a signal is never pending while a member of its group on that
+    /// key waits. The instrument <c>moltaro.signals.sets</c> does not count a signal handed on.
     /// </para>
     /// </remarks>
     /// <exception cref="InvalidOperationException">

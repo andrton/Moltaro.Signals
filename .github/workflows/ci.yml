@@ -15,9 +15,12 @@ defaults:
   run:
     working-directory: src
 
+# A test that hangs instead of failing ends its job after 15 minutes instead of GitHub's
+# default of six hours (open question Q2 of docs/work/open-questions.md).
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6
@@ -30,6 +33,7 @@ jobs:
   # The same lane on Windows. Only "build" is a required check of main.
   windows:
     runs-on: windows-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v6

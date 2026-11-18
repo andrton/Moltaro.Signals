@@ -1,15 +1,17 @@
+using System.Diagnostics.Metrics;
 using System.Net;
+using Moltaro.Signals.Delivery;
 
 namespace Moltaro.Signals;
 
 /// <summary>
-/// The host of one deployment: it keeps the events in memory, serves clients in other processes over TCP and is
+/// The host of one deployment: it keeps the signals in memory, serves clients in other processes over TCP and is
 /// the <see cref="ISignals"/> of code inside its own process.
 /// </summary>
 /// <remarks>
 /// <para>
 /// It is embedded in the process that owns the background work. Several hosts may live in one process; they share
-/// nothing. Nothing is persisted: the events are memory only, and a host may restart at any time, because every
+/// nothing. Nothing is persisted: the signals are memory only, and a host may restart at any time, because every
 /// member does one full pass after its client reconnects.
 /// </para>
 /// <para>
@@ -17,7 +19,7 @@ namespace Moltaro.Signals;
 /// that <see cref="ISignals"/> describes.
 /// </para>
 /// </remarks>
-public sealed class SignalHost : ISignals, IAsyncDisposable
+public sealed partial class SignalHost : ISignals, IAsyncDisposable
 {
     /// <summary>
     /// The name of the <see cref="System.Diagnostics.Metrics.Meter"/> of every host, for a listener such as
@@ -41,27 +43,52 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     /// <c>moltaro.signals.sets</c>, a counter in <c>{set}</c>: sets the host applied, in-process and remote.
     /// </description></item>
     /// <item><description>
-    /// <c>moltaro.signals.coalesced</c>, a counter in <c>{event}</c>: once per (key, group), ancestors included, a
-    /// set that found the group's event already raised. A signal handed on is not counted here.
+    /// <c>moltaro.signals.coalesced</c>, a counter in <c>{signal}</c>: once per (key, group), ancestors included, a
+    /// set that found a signal already pending. A signal handed on is not counted here.
     /// </description></item>
     /// <item><description>
     /// <c>moltaro.signals.deliveries</c>, a counter in <c>{signal}</c>: signals handed to a member, by a set or a
-    /// signal handed on to a waiting member, or by a wait that found the event raised. <c>Joined</c> is not counted.
+    /// signal handed on to a waiting member, or a pending signal taken by a wait. <c>Joined</c> is not counted.
     /// </description></item>
     /// <item><description>
-    /// <c>moltaro.signals.reraises</c>, a counter in <c>{event}</c>: busy members that left while their group on that
-    /// key kept at least one member, so that their signal was handed on, to a waiting member or by raising the
-    /// event. A busy member that was the last of its group on that key hands nothing on and is not counted.
+    /// <c>moltaro.signals.handed_on</c>, a counter in <c>{signal}</c>: signals handed on because a busy member left
+    /// while its group on that key kept at least one member: to a waiting member, or as a pending signal. A busy
+    /// member that was the last of its group on that key hands nothing on and is not counted.
     /// </description></item>
     /// </list>
     /// </remarks>
     public const string MeterName = "Moltaro.Signals";
 
-    private volatile bool _disposed;
+    // The one lock of the host. It guards _delivery, the change of _disposal, and the wait fields of every
+    // subscription. Under it the host runs no code of the application except, for deadlines, TimeProvider.CreateTimer
+    // and ITimer.Change: the due time is at least 1 ms, so a TimeProvider does not call back inside them, and the
+    // timer's own lock is taken inside this one, never the other way round. Waits are completed, measurements recorded
+    // and cancellations registered after it is released.
+    private readonly Lock _lock = new();
+
+    private readonly SignalDelivery _delivery = new();
+
+    private readonly TimeProvider _timeProvider;
+
+    private readonly Meter _meter;
+
+    private readonly UpDownCounter<long> _subscriptions;
+
+    private readonly Counter<long> _sets;
+
+    private readonly Counter<long> _coalesced;
+
+    private readonly Counter<long> _deliveries;
+
+    private readonly Counter<long> _handedOn;
+
+    // Null until the host is disposed. The first DisposeAsync creates it under _lock and completes it once it has ended
+    // the in-process side; a later call returns its task. State reads it without the lock.
+    private volatile TaskCompletionSource? _disposal;
 
     /// <summary>
-    /// Creates a host with its events in memory. Its in-process <see cref="ISignals"/> works from here on, before
-    /// <see cref="Start"/>: the port matters only to remote clients.
+    /// Creates a host with its signal delivery in memory. Its in-process <see cref="ISignals"/> works from here on,
+    /// before <see cref="Start"/>: the port matters only to remote clients.
     /// </summary>
     /// <param name="options">The options of the host, validated and copied: a later change of them has no effect.</param>
     /// <exception cref="ArgumentNullException"><paramref name="options"/> is <see langword="null"/>.</exception>
@@ -99,6 +126,15 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
         {
             throw new ArgumentException("The time provider is required.", nameof(SignalHostOptions.TimeProvider));
         }
+
+        _timeProvider = options.TimeProvider;
+
+        _meter = new Meter(new MeterOptions(MeterName) { Scope = this });
+        _subscriptions = _meter.CreateUpDownCounter<long>("moltaro.signals.subscriptions", "{subscription}");
+        _sets = _meter.CreateCounter<long>("moltaro.signals.sets", "{set}");
+        _coalesced = _meter.CreateCounter<long>("moltaro.signals.coalesced", "{signal}");
+        _deliveries = _meter.CreateCounter<long>("moltaro.signals.deliveries", "{signal}");
+        _handedOn = _meter.CreateCounter<long>("moltaro.signals.handed_on", "{signal}");
     }
 
     /// <summary>
@@ -115,7 +151,8 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     /// <see cref="SignalConnectionStateEnum.Connected"/> from the constructor until <see cref="DisposeAsync"/>, and
     /// <see cref="SignalConnectionStateEnum.Disconnected"/> afterwards.
     /// </summary>
-    public SignalConnectionStateEnum State => SignalConnectionStateEnum.Disconnected;
+    public SignalConnectionStateEnum State =>
+        _disposal is null ? SignalConnectionStateEnum.Connected : SignalConnectionStateEnum.Disconnected;
 
     /// <summary>
     /// Never raised: the in-process <see cref="ISignals"/> of a host is connected for as long as the host lives.
@@ -123,7 +160,7 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     /// </summary>
     public event EventHandler<SignalConnectionChangedEventArgs>? StateChanged
     {
-        // A host never raises the event, so it keeps no handlers.
+        // A host never raises StateChanged, so it keeps no handlers.
         add { }
         remove { }
     }
@@ -145,10 +182,10 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     }
 
     /// <summary>
-    /// Sets the event of a key and of each of its ancestors, for every (key, group) among these keys that has members
-    /// on this host, in-process or remote.
+    /// Sets a key and each of its ancestors, for every (key, group) among these keys that has members on this host,
+    /// in-process or remote.
     /// </summary>
-    /// <param name="key">The key whose event is set; a name, as the remarks of <see cref="ISignals"/> define it.</param>
+    /// <param name="key">The key that is set; a name, as the remarks of <see cref="ISignals"/> define it.</param>
     /// <param name="cancellationToken">
     /// A token that is already cancelled gives a cancelled task, and nothing is set.
     /// </param>
@@ -161,9 +198,9 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     /// <para>
     /// A set of <c>a.b.c</c> acts as a set of <c>a.b.c</c>, <c>a.b</c> and <c>a</c>. It sets no descendant and knows
     /// no wildcard. For every (key, group) among these keys that has members: if a member of the group on that key
-    /// waits, the signal is handed to exactly one such member; otherwise that event becomes raised. So a set of
-    /// <c>a.b</c> wakes one waiting member of a group on <c>a.b</c> and one on <c>a</c>. Setting a raised event does
-    /// nothing, and coalescing stays per (key, group); sets are never accumulated, queued or replayed.
+    /// waits, the signal is handed to exactly one such member; otherwise the signal becomes pending. So a set of
+    /// <c>a.b</c> wakes one waiting member of a group on <c>a.b</c> and one on <c>a</c>. A set while a signal is
+    /// pending does nothing, and coalescing stays per (key, group); sets are never accumulated, queued or replayed.
     /// </para>
     /// <para>
     /// Members of in-process and remote subscriptions are members of the same groups. The set does not run the code
@@ -179,9 +216,30 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     public ValueTask<SignalSetResult> SetAsync(string key, CancellationToken cancellationToken = default)
     {
         SignalChecks.CheckName(key, nameof(key));
-        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        throw new NotSupportedException();
+        SetOutcome outcome;
+
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return ValueTask.FromCanceled<SignalSetResult>(cancellationToken);
+            }
+
+            outcome = _delivery.Set(key);
+        }
+
+        Deliver(outcome.FirstWoken);
+        _sets.Add(1);
+
+        if (outcome.Coalesced > 0)
+        {
+            _coalesced.Add(outcome.Coalesced);
+        }
+
+        return new ValueTask<SignalSetResult>(new SignalSetResult(SignalSetStatusEnum.Applied, outcome.Groups));
     }
 
     /// <summary>
@@ -207,9 +265,19 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     {
         SignalChecks.CheckName(key, nameof(key));
         SignalChecks.CheckName(group, nameof(group));
-        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        throw new NotSupportedException();
+        var subscription = new InProcessSubscription(this);
+
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+
+            _delivery.Open(subscription, key, group);
+        }
+
+        _subscriptions.Add(1);
+
+        return subscription;
     }
 
     /// <summary>
@@ -219,7 +287,7 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     /// <remarks>
     /// <para>
     /// Pending in-process waits end with <see cref="ObjectDisposedException"/>, later calls throw it, and
-    /// <see cref="State"/> becomes <see cref="SignalConnectionStateEnum.Disconnected"/>. Nothing is kept: the events
+    /// <see cref="State"/> becomes <see cref="SignalConnectionStateEnum.Disconnected"/>. Nothing is kept: the signals
     /// are memory only.
     /// </para>
     /// <para>
@@ -230,8 +298,81 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     /// </remarks>
     public ValueTask DisposeAsync()
     {
-        _disposed = true;
+        TaskCompletionSource disposal;
+        GroupMember? firstWaited;
 
-        return ValueTask.CompletedTask;
+        lock (_lock)
+        {
+            // A later call waits for the first, which may still be ending the waits or disposing the meter.
+            if (_disposal is not null)
+            {
+                return new ValueTask(_disposal.Task);
+            }
+
+            disposal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _disposal = disposal;
+            firstWaited = _delivery.CloseAll();
+        }
+
+        for (GroupMember? member = firstWaited; member is not null;)
+        {
+            GroupMember? next = member.NextWoken;
+
+            ((InProcessSubscription)member).FailWait(new ObjectDisposedException(GetType().FullName));
+            member = next;
+        }
+
+        // Disposing the meter runs the MeasurementsCompleted callbacks of the application's listeners, which may throw:
+        // the first call then reports that exception, and the later calls complete all the same.
+        try
+        {
+            _meter.Dispose();
+        }
+        finally
+        {
+            disposal.SetResult();
+        }
+
+        return new ValueTask(disposal.Task);
+    }
+
+    // After the lock: completes the waits of the members that a set woke, and counts them as deliveries.
+    private void Deliver(GroupMember? firstWoken)
+    {
+        int delivered = 0;
+
+        for (GroupMember? member = firstWoken; member is not null;)
+        {
+            // Read before the wait is completed: once completed, the member may wait and be woken again, which
+            // relinks it.
+            GroupMember? next = member.NextWoken;
+
+            ((InProcessSubscription)member).CompleteWait(SignalWaitResultEnum.Signaled);
+            delivered++;
+            member = next;
+        }
+
+        if (delivered > 0)
+        {
+            _deliveries.Add(delivered);
+        }
+    }
+
+    // After the lock: finishes the close of an open member. A signal it handed on to a waiting member completes that
+    // member's wait.
+    private void FinishClose(CloseOutcome outcome)
+    {
+        _subscriptions.Add(-1);
+
+        if (outcome.Receiver is not null)
+        {
+            ((InProcessSubscription)outcome.Receiver).CompleteWait(SignalWaitResultEnum.Signaled);
+            _deliveries.Add(1);
+        }
+
+        if (outcome.Receiver is not null || outcome.Pending)
+        {
+            _handedOn.Add(1);
+        }
     }
 }

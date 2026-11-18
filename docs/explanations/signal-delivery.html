@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How a set wakes one member of each group on a key — Moltaro.Signals</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c2330; --muted: #5d6878; --line: #c9d1dc; --panel: #f4f6f9;
+    --link: #1f6feb; --sig: #d97706; --busy: #1f6feb; --busy-bg: #e6f0ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161c; --fg: #e3e8ef; --muted: #98a4b3; --line: #3a4350; --panel: #1b212a;
+      --link: #6cb0ff; --sig: #f0a55a; --busy: #6cb0ff; --busy-bg: #16263f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 940px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 1.2rem; margin: 40px 0 8px; }
+  p { margin: 8px 0; }
+  ul, ol { padding-left: 24px; margin: 8px 0; }
+  li { margin: 4px 0; }
+  a { color: var(--link); }
+  code { font: .9em ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .lead { color: var(--muted); }
+  .status { border-left: 3px solid var(--sig); background: var(--panel); padding: 10px 14px; margin: 18px 0; font-size: .93rem; }
+  blockquote { margin: 16px 0; padding: 10px 16px; border-left: 3px solid var(--busy); background: var(--panel); font-size: 1.05rem; }
+  figure { margin: 20px 0 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  svg { display: block; width: 100%; height: auto; background: var(--panel); }
+  .controls { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--fg); cursor: pointer; }
+  button:hover { border-color: var(--fg); }
+  button:disabled { opacity: .45; cursor: default; }
+  .count { color: var(--muted); font-size: .9rem; margin-left: auto; }
+  .caption { padding: 14px; border-top: 1px solid var(--line); min-height: 112px; }
+  details { margin: 12px 0 0; }
+  summary { cursor: pointer; color: var(--muted); }
+
+  /* drawing */
+  text { fill: var(--fg); font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .small { font-size: 11.5px; fill: var(--muted); }
+  .head { font-size: 12px; fill: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .mono { font: 13px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .name { font-weight: 700; font-size: 15px; }
+  .box { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; }
+  .box.active { stroke: var(--sig); stroke-width: 2; }
+  .flow { stroke: var(--line); stroke-width: 2; fill: none; }
+  .tip { fill: var(--line); }
+  .legend-busy { fill: var(--busy-bg); stroke: var(--busy); stroke-width: 1.4; }
+  .slot { fill: none; stroke: var(--sig); stroke-width: 1.5; stroke-dasharray: 4 3; }
+  .member rect { stroke-width: 1.4; transition: fill .5s ease, stroke .5s ease, opacity .5s ease; }
+  .member.wait rect { fill: var(--bg); stroke: var(--line); }
+  .member.busy rect { fill: var(--busy-bg); stroke: var(--busy); }
+  .member.free rect { fill: var(--bg); stroke: var(--busy); stroke-dasharray: 6 4; }
+  .member.gone rect { fill: none; stroke: var(--line); stroke-dasharray: 6 4; }
+  .member.gone text { opacity: .55; }
+  .sig circle, circle.sig { fill: var(--sig); }
+  .sig { transition: transform .9s ease, opacity .5s ease; }
+  @media (prefers-reduced-motion: reduce) { .sig, .member rect { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>How a set wakes one member of each group on a key</h1>
+  <p class="lead">Moltaro.Signals · an explanation for a developer who uses the library, not a
+    specification. The rule itself is <a href="../concept.md#3-semantics">concept §3, “Semantics”</a>.
+    The same text without the animation is in <a href="signal-delivery.md">signal-delivery.md</a>.</p>
+  <p class="status"><b>Status, 18 November 2026.</b> Built for code inside the host process: sprint S2
+    of the first epic built the in-process host, <code>SignalHost</code> used as <code>ISignals</code>,
+    with everything this page shows. The network side is not built yet: the host does not listen,
+    and <code>SignalClient</code> is not implemented. A member in another process is intended to see
+    the same behavior.</p>
+
+  <h2>The idea</h2>
+  <blockquote>A set gives each group on a key one signal: “look now”. One waiting member of the group
+    takes it. If no member waits, the signal stays pending until one does, and more sets change
+    nothing.</blockquote>
+  <p>A signal carries no data. The member that takes it reads the facts from its own storage, so one
+    pass is enough, however many sets came.</p>
+
+  <h2>The parts</h2>
+  <ul>
+    <li><b>Key.</b> The name of what changed, for example <code>orders</code>. A publisher sets the key
+      with <code>SetAsync</code> after the change is stored.</li>
+    <li><b>Group.</b> Who competes for a key. Every group on a key gets its own signal; the members of
+      one group share it.</li>
+    <li><b>Member.</b> One subscription, made with <code>Subscribe(key, group)</code>. A worker with two
+      lanes makes two members of one group.</li>
+    <li><b>Signal.</b> What a set gives each group that has members on the key. It is handed to one
+      waiting member, or it is pending.</li>
+    <li><b>Pending.</b> A signal that no member of the group has taken yet, because none was waiting. A
+      group has at most one pending signal on a key.</li>
+  </ul>
+  <p>A member runs one loop: it calls <code>WaitAsync</code>, does one pass over its storage, and calls
+    <code>WaitAsync</code> again. <code>WaitAsync</code> returns <code>Joined</code> the first time,
+    <code>Signaled</code> when the member received a signal, and <code>DeadlineReached</code> when the
+    member’s own deadline came first. Whatever the result, the member does one full pass. After
+    <code>Joined</code> or <code>Signaled</code> it is <em>busy</em> until its next
+    <code>WaitAsync</code>.</p>
+
+  <h2>Step by step</h2>
+  <p>The steps follow one key, <code>orders</code>, with two groups: <code>billing</code> with the
+    members A and B, and <code>shipping</code> with the member C.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 400" role="img" aria-label="Key orders with the groups billing and shipping, their members, their pending signals, and the publisher that sets the key">
+      <defs>
+        <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path class="tip" d="M0 0 L10 5 L0 10 z"/>
+        </marker>
+      </defs>
+
+      <text class="head" x="20" y="36">Publisher</text>
+      <rect id="pubBox" class="box" x="20" y="46" width="212" height="150" rx="8"/>
+      <text id="pubCall" class="mono" x="36" y="88"></text>
+      <text id="pubResult" class="small" x="36" y="112"></text>
+      <text id="pubCount" class="small" x="36" y="176"></text>
+      <path class="flow" marker-end="url(#tip)" d="M234 125 L262 125"/>
+
+      <circle class="sig" cx="34" cy="246" r="8"/>
+      <text class="small" x="50" y="250">a signal: “look now”</text>
+      <circle class="slot" cx="34" cy="274" r="8"/>
+      <text class="small" x="50" y="278">the place of a pending signal</text>
+      <rect class="legend-busy" x="26" y="294" width="16" height="12" rx="3"/>
+      <text class="small" x="50" y="304">a busy member, doing one pass</text>
+
+      <text class="head" x="268" y="36">Key orders</text>
+      <rect class="box" x="268" y="46" width="612" height="330" rx="10"/>
+
+      <text class="head" x="288" y="76">group billing</text>
+      <circle class="slot" cx="338" cy="140" r="20"/>
+      <text class="small" x="338" y="180" text-anchor="middle">pending</text>
+      <g id="mA" class="member wait">
+        <rect x="420" y="100" width="200" height="80" rx="8"/>
+        <text class="name" x="436" y="124">A</text>
+        <text id="sA" x="436" y="148"></text>
+        <text id="rA" class="small" x="436" y="168"></text>
+      </g>
+      <g id="mB" class="member wait">
+        <rect x="650" y="100" width="200" height="80" rx="8"/>
+        <text class="name" x="666" y="124">B</text>
+        <text id="sB" x="666" y="148"></text>
+        <text id="rB" class="small" x="666" y="168"></text>
+      </g>
+
+      <path class="flow" d="M284 212 L864 212"/>
+
+      <text class="head" x="288" y="238">group shipping</text>
+      <circle class="slot" cx="338" cy="300" r="20"/>
+      <text class="small" x="338" y="340" text-anchor="middle">pending</text>
+      <g id="mC" class="member wait">
+        <rect x="420" y="260" width="200" height="80" rx="8"/>
+        <text class="name" x="436" y="284">C</text>
+        <text id="sC" x="436" y="308"></text>
+        <text id="rC" class="small" x="436" y="328"></text>
+      </g>
+
+      <!-- signals; each one is created by a set at the publisher -->
+      <g opacity="0" id="d1" class="sig"><circle r="9"/></g>
+      <g opacity="0" id="d2" class="sig"><circle r="9"/></g>
+      <g opacity="0" id="d3" class="sig"><circle r="9"/></g>
+      <g opacity="0" id="d4" class="sig"><circle r="9"/></g>
+      <g opacity="0" id="d5" class="sig"><circle r="9"/></g>
+      <g opacity="0" id="d6" class="sig"><circle r="9"/></g>
+      <g opacity="0" id="d7" class="sig"><circle r="9"/></g>
+      <g opacity="0" id="d8" class="sig"><circle r="9"/></g>
+    </svg>
+    <div class="controls">
+      <button id="prev" type="button">← Back</button>
+      <button id="play" type="button">Pause</button>
+      <button id="next" type="button">Next →</button>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </figure>
+
+  <details>
+    <summary>All steps as text</summary>
+    <ol id="steps">
+      <li><b>Two groups on one key.</b> Key <code>orders</code> has two groups. <code>billing</code> has
+        two members, A and B, for example two lanes of one worker; <code>shipping</code> has one, C. Each
+        member’s first <code>WaitAsync</code> returned <code>Joined</code>, it did one pass, and now it
+        waits again. Nothing is pending.</li>
+      <li><b>A set wakes one waiting member of each group.</b> An order is stored, and the publisher
+        calls <code>SetAsync("orders")</code>. Each group gets its own signal, and one waiting member of
+        each receives it: A in <code>billing</code>, C in <code>shipping</code>. B keeps waiting: one
+        pass is enough. The set returns <code>Applied</code> with <code>Groups</code> 2. A and C are busy
+        now, each doing one pass.</li>
+      <li><b>A set while a member is busy leaves a signal pending.</b> Another order, another set. In
+        <code>billing</code>, B still waits, so it receives the signal. In <code>shipping</code>, C is
+        busy and nobody waits, so the signal becomes pending. It is there for C when C comes back.</li>
+      <li><b>Twenty sets are one.</b> Twenty more orders, twenty more sets. The first makes a signal
+        pending in <code>billing</code>, where A and B are both busy now. The other nineteen find a
+        signal pending in both groups and do nothing. Each set still returns <code>Applied</code> with
+        <code>Groups</code> 2.</li>
+      <li><b>A wait that returns at once.</b> A and C finish their pass and call <code>WaitAsync</code>
+        again. Each finds a signal pending for its group, takes it, and returns <code>Signaled</code> at
+        once. Each does one more pass, which finds the new orders in storage.</li>
+      <li><b>B waits, and nothing is pending.</b> B finishes its pass and calls <code>WaitAsync</code>. A
+        has just taken the signal of <code>billing</code>, so nothing is pending there, and B
+        waits.</li>
+      <li><b>A busy member leaves while another waits.</b> A disposes its subscription while it is busy,
+        before its next <code>WaitAsync</code>. Its pass may be unfinished, so A hands its signal on to
+        its group on its key. B waits, so B receives it, returns <code>Signaled</code> and does the pass.
+        <code>shipping</code> is not touched.</li>
+      <li><b>C waits with a deadline.</b> C finishes its pass and calls <code>WaitAsync</code> with a
+        deadline: 10:05, when its next scheduled item falls due. Nothing is pending, so C waits for a
+        signal or for 10:05, whichever comes first.</li>
+      <li><b>A deadline that meets a signal: the signal first.</b> At 10:05 a set comes, at the same
+        moment as the deadline. The host handles one of the two first; here it is the set. C receives
+        the signal, and <code>WaitAsync</code> returns <code>Signaled</code>, not
+        <code>DeadlineReached</code>. One result, one pass. In <code>billing</code>, B is busy, so the
+        same set leaves a signal pending there.</li>
+      <li><b>The same moment, the deadline first.</b> Back to 10:05, in the other order.
+        <code>WaitAsync</code> returns <code>DeadlineReached</code>, and C does its pass without a
+        signal. The set right after finds nobody waiting in <code>shipping</code>, so the signal becomes
+        pending, and C’s next <code>WaitAsync</code> returns at once. In either order the signal is not
+        lost.</li>
+    </ol>
+  </details>
+
+  <h2>What an application can rely on</h2>
+  <ul>
+    <li><b>One member of each group.</b> A set wakes at most one member of each group on the key. Which
+      of several waiting members it wakes is not part of the rule.</li>
+    <li><b>Nothing piles up.</b> A set while a signal is pending does nothing. A group has at most one
+      pending signal on a key, and a member at most one more pass to do.</li>
+    <li><b>The last set is not lost.</b> A set that finds no member waiting leaves a signal pending. A
+      busy member that leaves hands its signal on. A wait that ends at its deadline takes no signal
+      with it: a set that comes after it leaves a signal pending.</li>
+    <li><b>A set does not wait for the members.</b> In the host process, <code>SetAsync</code> returns
+      at once with <code>Groups</code>, the number of groups that have members on the key; 0 means
+      nobody listens. It does not wait for the member it wakes to do its pass.</li>
+    <li><b>No data, no order, no history.</b> The work stays in storage and is claimed there; a signal
+      only says when to look.</li>
+  </ul>
+
+  <h2>A key and its ancestors</h2>
+  <p>A key is a path of segments separated by <code>.</code>: the ancestor of <code>orders.42</code>
+    is <code>orders</code>. A set of a key also sets each of its ancestors, by the same rule.
+    <code>SetAsync("orders.42")</code> wakes one waiting member of each group on
+    <code>orders.42</code> and one of each group on <code>orders</code>, and <code>Groups</code>
+    counts each group on each of these keys once. A set of <code>orders</code> reaches no member on
+    <code>orders.42</code>. A busy member that leaves hands its signal on only on its own key.</p>
+</main>
+
+<script>
+(function () {
+  // Where a signal can be: at the publisher that creates it, in the pending place of a
+  // group, or with the member it was handed to.
+  var PUB = [234, 125];
+  var AT = { A: [596, 140], B: [826, 140], C: [596, 300], billing: [338, 140], shipping: [338, 300] };
+  var SIGNALS = ["d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8"];
+
+  var ONE = 'SetAsync("orders")', NONE = "no set in this step";
+  var WAITS = ["wait", "waits", ""];
+  var BUSY = function (result) { return ["busy", "busy: one pass", "returned " + result]; };
+
+  // One entry per item of the list "All steps as text", in the same order.
+  var steps = [
+    { call: "", result: "no set yet", sets: 0,
+      m: { A: WAITS, B: WAITS, C: WAITS }, d: {} },
+    { call: ONE, result: "Applied, Groups 2", sets: 1,
+      m: { A: BUSY("Signaled"), B: WAITS, C: BUSY("Signaled") },
+      d: { d1: "A", d2: "C" } },
+    { call: ONE, result: "Applied, Groups 2", sets: 2,
+      m: { A: BUSY("Signaled"), B: BUSY("Signaled"), C: BUSY("Signaled") },
+      d: { d1: "A", d3: "B", d2: "C", d4: "shipping" } },
+    { call: ONE + " × 20", result: "each Applied, Groups 2", sets: 22,
+      m: { A: BUSY("Signaled"), B: BUSY("Signaled"), C: BUSY("Signaled") },
+      d: { d1: "A", d3: "B", d2: "C", d4: "shipping", d5: "billing" } },
+    { call: "", result: NONE, sets: 22,
+      m: { A: BUSY("Signaled at once"), B: BUSY("Signaled"), C: BUSY("Signaled at once") },
+      d: { d5: "A", d3: "B", d4: "C" } },
+    { call: "", result: NONE, sets: 22,
+      m: { A: BUSY("Signaled at once"), B: WAITS, C: BUSY("Signaled at once") },
+      d: { d5: "A", d4: "C" } },
+    { call: "", result: NONE, sets: 22,
+      m: { A: ["gone", "left", "disposed while busy"], B: BUSY("Signaled"), C: BUSY("Signaled at once") },
+      d: { d5: "B", d4: "C" } },
+    { call: "", result: NONE, sets: 22,
+      m: { A: ["gone", "left", ""], B: BUSY("Signaled"), C: ["wait", "waits until 10:05", ""] },
+      d: { d5: "B" } },
+    { call: ONE, result: "Applied, Groups 2", sets: 23,
+      m: { A: ["gone", "left", ""], B: BUSY("Signaled"), C: BUSY("Signaled") },
+      d: { d5: "B", d6: "C", d7: "billing" } },
+    { call: ONE, result: "Applied, Groups 2", sets: 23,
+      m: { A: ["gone", "left", ""], B: BUSY("Signaled"), C: ["free", "works, holds no signal", "returned DeadlineReached"] },
+      d: { d5: "B", d7: "billing", d8: "shipping" } }
+  ];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var captions = $("steps").children;
+  var at = 0, shown = -1, timer = null;
+  var STEP_MS = 8000;
+
+  function place(el, xy) { el.style.transform = "translate(" + xy[0] + "px," + xy[1] + "px)"; }
+
+  function show() {
+    var s = steps[at];
+    var forward = at === shown + 1;
+
+    SIGNALS.forEach(function (id) {
+      var el = $(id);
+      var target = s.d[id];
+      var wasVisible = el.getAttribute("opacity") === "1";
+      if (!target) { el.setAttribute("opacity", 0); return; }
+      if (!wasVisible) {
+        // A signal that appears comes from the publisher when the figure moves one step
+        // forward; otherwise it appears in its place.
+        el.style.transition = "none";
+        place(el, forward ? PUB : AT[target]);
+        el.getBoundingClientRect();
+        el.style.transition = "";
+      }
+      place(el, AT[target]);
+      el.setAttribute("opacity", 1);
+    });
+
+    ["A", "B", "C"].forEach(function (name) {
+      var m = s.m[name];
+      $("m" + name).setAttribute("class", "member " + m[0]);
+      $("s" + name).textContent = m[1];
+      $("r" + name).textContent = m[2];
+    });
+
+    $("pubBox").setAttribute("class", s.call ? "box active" : "box");
+    $("pubCall").textContent = s.call;
+    $("pubResult").textContent = s.result;
+    $("pubCount").textContent = "sets so far: " + s.sets;
+
+    $("caption").innerHTML = captions[at].innerHTML;
+    $("count").textContent = "Step " + (at + 1) + " of " + steps.length;
+    $("prev").disabled = at === 0;
+    $("next").disabled = at === steps.length - 1;
+    shown = at;
+  }
+
+  function stop() { clearTimeout(timer); timer = null; $("play").textContent = "Play"; }
+
+  function play() {
+    $("play").textContent = "Pause";
+    timer = setTimeout(function tick() {
+      if (at === steps.length - 1) { stop(); return; }
+      at++; show();
+      timer = setTimeout(tick, STEP_MS);
+    }, STEP_MS);
+  }
+
+  $("prev").onclick = function () { stop(); if (at > 0) { at--; show(); } };
+  $("next").onclick = function () { stop(); if (at < steps.length - 1) { at++; show(); } };
+  $("play").onclick = function () {
+    if (timer) { stop(); return; }
+    if (at === steps.length - 1) { at = 0; show(); }
+    play();
+  };
+
+  show();
+  play();
+})();
+</script>
+</body>
+</html>

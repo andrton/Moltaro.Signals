@@ -1,13 +1,13 @@
 # Epic 1: First release
 
 **Status:** the plan and its contract were approved by the owner on 18 November 2026 (O4);
-S1 is done; S2 is next.
+S1 and S2 are done; S3 is next.
 
 ## Goal
 
 The library as the [concept](../concept.md) describes it, published on nuget.org as its
-first version: a host embedded in one process that keeps remote auto-reset events with
-consumer groups in memory, a client for other processes over one TCP connection, the same
+first version: a host embedded in one process that keeps remote signals with consumer
+groups in memory, a client for other processes over one TCP connection, the same
 `ISignals` interface for code inside the host process, and a thin package that registers
 either of them in a .NET generic host.
 
@@ -27,13 +27,13 @@ decision [O3](#decisions-of-the-owner-18-november-2026), and the first release (
 
 **Left out**, as the concept's section 9 says: payloads, durable state, clustering or
 failover, ordering, exactly-once delivery, locks or leases, browser clients, TLS, a
-standalone server binary (a sample shows one), clients in other languages, a manual-reset
-event, watching a group's presence. Also left out, because nothing needs them now:
-logging inside `Moltaro.Signals` (it has no package dependency; the hosting package writes
-the log lines), overloads that bind options from `IConfiguration`, health checks, a
-benchmark package. Left out by D9, which puts the library on an internal network behind a
-shared token: resistance to denial of service beyond the limits the options state
-(decision O5).
+standalone server binary (a sample shows one), clients in other languages, a signal that
+stays pending for all members, watching a group's presence. Also left out, because nothing
+needs them now: logging inside `Moltaro.Signals` (it has no package dependency; the
+hosting package writes the log lines), overloads that bind options from `IConfiguration`,
+health checks, a benchmark package. Left out by D9, which puts the library on an internal
+network behind a shared token: resistance to denial of service beyond the limits the
+options state (decision O5).
 
 ## Decisions of the owner, 18 November 2026
 
@@ -49,6 +49,7 @@ shared token: resistance to denial of service beyond the limits the options stat
 | O8 | **A refactoring sprint in the middle of every epic**, on the refactoring track of the [development process](process.md#a-refactoring-sprint); in this epic S4, after S3 |
 | O9 | **Three contract wordings.** The rules act per (key, group); an attempt that ends without the host's answer to its `HELLO` raises no `StateChanged`; the client logs a refused attempt in its Warning line, with no Error line |
 | O10 | **O1 covers this epic's documents too.** The standing permission of O1 also covers the pull requests of this epic's documents — the plan, the contracts of later stages, light-track changes — once they are reviewed and, where the process asks for it, approved by the owner. It never covers the release change, which stays with the owner, or what O1 excludes |
+| O11 | **The one term is signal.** A set gives each group with members on a key a *signal*; one that no member has taken yet is *pending* (at most one per (key, group)); a busy member that leaves *hands its signal on*. "Event" for that state, "raised", "re-raise" and "auto-reset event" leave the documentation, the contract and the code |
 
 ## Requirements
 
@@ -59,8 +60,8 @@ without it. "Today" is the state on 18 November 2026: no code exists.
 | # | Requirement | From | Level | Today | Sprints |
 | --- | --- | --- | --- | --- | --- |
 | R1 | One `ISignals` contract for code in the host process and in other processes, with the same semantics; application code does not branch on where the host is | Principle 6; concept §2, §5 | Must | Absent | S1, S2, S5 |
-| R2 | The rules 1–7 of concept §3, held by one event state machine of the host, per (key, group), with a set of a key also setting its ancestors (O7). A group with no members on a key keeps no state for it; memory grows only with keys × groups and subscriptions | Concept §3, D1–D5 | Must | Absent | S2 |
-| R3 | A wait that ends by its deadline or by cancellation never loses a signal that was handed to it and never turns it into a second pending pass; a busy member that leaves hands its signal to a member that waits | Principle 3; rules 1, 5, 7; [PQ1](#pq1-ending-a-remote-wait) | Must | Absent | S2, S3, S5 |
+| R2 | The rules 1–7 of concept §3, held by the host's signal delivery, per (key, group), with a set of a key also setting its ancestors (O7). A group with no members on a key keeps no state for it; memory grows only with keys × groups and subscriptions | Concept §3, D1–D5 | Must | Absent | S2 |
+| R3 | A wait that ends by its deadline or by cancellation never loses a signal that was handed to it and never turns it into a second due pass; a busy member that leaves hands its signal to a member that waits | Principle 3; rules 1, 5, 7; [PQ1](#pq1-ending-a-remote-wait) | Must | Absent | S2, S3, S5 |
 | R4 | The in-process `ISignals` of a host, without a socket | Concept §5 | Must | Absent | S2 |
 | R5 | The host over TCP: bind address and port configurable, port 0 allowed and the bound endpoint known; `HELLO` with the protocol version and the shared token; refusals with a code; a protocol violation closes the connection with a reason; the limits of concept §6 as options | Concept §6, D9, D13; principle 9 | Must | Absent | S3 |
 | R6 | The remote client: one persistent connection; a set never waits for a connection, never queues and answers `Unavailable` at once while not connected (the wording of [PQ3](#pq3-sentences-of-the-concept-and-of-agentsmd-that-the-contract-makes-untrue), rows e to g); subscriptions survive a reconnect and return `Joined` | Concept §4, D5, D8; principle 2 | Must | Absent | S5 |
@@ -68,9 +69,9 @@ without it. "Today" is the state on 18 November 2026: no code exists.
 | R8 | Every timeout and limit an application can observe is an option with a default, validated when the host or client is created; time comes from `TimeProvider` | Principle 8 | Must | Absent | S1, S2, S3, S5 |
 | R9 | The protocol is written exactly in `docs/protocol.md`, with its version | `AGENTS.md`, "The Contract Comes First" | Must | Absent | S3 |
 | R10 | The hosting package: registration of the host or the client in a generic host and a container; the host registered first binds its port before later hosted services start; connect and disconnect log lines | Concept §5, §11, D10 | Must | Absent | S1, S6 |
-| R11 | Metrics through `System.Diagnostics.Metrics`: connections, subscriptions, sets, coalesced sets, deliveries, re-raises | Concept §11 | Release | Absent | S2, S3 |
+| R11 | Metrics through `System.Diagnostics.Metrics`: connections, subscriptions, sets, coalesced sets, deliveries, signals handed on | Concept §11 | Release | Absent | S2, S3 |
 | R12 | The samples project shows intended use, includes a standalone host of about 30 lines and runs to the end with `dotnet run` | Concept §5; `AGENTS.md` | Must | Absent | S1, S6 |
-| R13 | Tests as concept §11 and `AGENTS.md` require: a deterministic test of the state machine for every rule of §3, unit tests of the codec, loopback TCP tests of connect, heartbeat loss, host restart, leaving while busy, bad input and limits; a fake clock; no sleeps | Concept §11; `AGENTS.md` | Must | Absent | S1–S6 |
+| R13 | Tests as concept §11 and `AGENTS.md` require: a deterministic test of signal delivery for every rule of §3, unit tests of the codec, loopback TCP tests of connect, heartbeat loss, host restart, leaving while busy, bad input and limits; a fake clock; no sleeps | Concept §11; `AGENTS.md` | Must | Absent | S1–S6 |
 | R14 | The measurement program `Moltaro.Signals.Measurements` for the targets of concept §11, with the figures recorded under [Measured results](#measured-results) | Concept §11; principle 11 | Release | Absent | S2, S3, S5, S6 |
 | R15 | The explanations of decision O3: E1 "How a set wakes one member of each group on a key" (animated), E2 "Why nothing is lost when a connection drops or the host restarts" (animated), E3 "How the library is built" (a still figure); each in `docs/explanations` as Markdown and HTML | O3 | Release | Absent | S2, S5, S6 |
 | R16 | Two packages: `Moltaro.Signals` with no package dependency, `Moltaro.Signals.Hosting` depending only on it and on the hosting abstractions of .NET; `dotnet pack` produces exactly these two; published from a version tag through nuget.org Trusted Publishing | D10, D15; principle 10 | Release | The workflows exist; no package | S1, S6 |
@@ -108,7 +109,18 @@ not committed. S6 moves the final figures into `README.md`.
 
 | Sprint | Scenario | Figure | Target | Machine | Date |
 | --- | --- | --- | --- | --- | --- |
-| — | — | — | — | — | — |
+| S2 | In-process set to wake, 100,000 wakes | p50 1.5 µs, p99 3.4 µs, maximum 176 µs | p50 under 50 µs: met | Intel Core i9-13900H, 20 logical processors, Windows 10.0.26300, .NET 10.0.15, Release | 18 November 2026 |
+| S2 | Allocated per wake of a waiting member | 96 bytes | Reported | The same | 18 November 2026 |
+| S2 | Sets per second on one thread, mostly coalesced | 10.6 million | At least 100,000: met | The same | 18 November 2026 |
+| S2 | Retained per (key, group), without subscriptions / per subscription | 190 / 142 bytes | Reported | The same | 18 November 2026 |
+| S2 | Change of retained memory over 1,000,000 sets | 0 bytes | Flat: met | The same | 18 November 2026 |
+| S2 | Allocated per wait, without deadline or token / with both | 96 / 232 bytes | Reported | The same | 18 November 2026 |
+| S2 | Set of a key of one / three segments, members on one level | 181 / 328 ns, 0 bytes allocated | Reported | The same | 18 November 2026 |
+| S2 | Sets per second on 2 / 4 / 8 threads, in total | 3.3 / 2.4 / 2.8 million | Reported | The same | 18 November 2026 |
+
+Rates and latencies on one laptop with mixed core types vary between runs, by a factor of
+five in the review of S2; every judged target was met in every run. The allocation and
+memory figures do not vary.
 
 ## Open questions
 
@@ -124,7 +136,7 @@ answer is written where it outlives this plan, which is removed after the releas
 by the host; `WaitAsync` completes after that answer and returns `Signaled` if the signal
 came first. The contract below states it, S3 builds it, and PQ3, row d, brings it into the
 concept. Without it, a member that returned at its deadline would stay armed on the host,
-and two passes could be pending for one member, which rule 5 excludes.
+and two passes could be due for one member, which rule 5 excludes.
 
 #### PQ2. How the performance targets of concept §11 are judged
 
@@ -138,7 +150,7 @@ and two passes could be pending for one member, which rule 5 excludes.
 - The loopback set to wake is judged at p99 under 1 ms, with the host and its clients in
   one process.
 - Memory is reported as the bytes retained per (key, group) and per subscription, and a
-  test of the state machine asserts that a group with no members keeps nothing.
+  test of signal delivery asserts that a group with no members keeps nothing.
 
 The documents step of S2 writes this into concept §11, next to the targets.
 
@@ -151,13 +163,13 @@ each edit in its documents step, in the same change as the code that follows it
 | # | Where | Now | New | Why | Edited by |
 | --- | --- | --- | --- | --- | --- |
 | a | Concept §3, rule 6 | "The first Wait after subscribing or after a reconnect returns at once with `Joined`" | "The first Wait after subscribing or after a reconnect returns `Joined` as soon as the host has opened the subscription; at once when it is open" | A `Joined` returned before the host counts the member lets a set made during the pass go unremembered (rule 3): that set is lost | S5 |
-| b | Concept §3, rule 7 | "the host raises its group's event again" | "the host sets its group's event again, as rule 1 does for that one (key, group), without its ancestors: a waiting member receives the signal, otherwise the event becomes raised" | An event raised while another member of the group waits would leave that member asleep. Elsewhere — principle 3 of `AGENTS.md`, D4, the `UNSUB` row of §6 — "re-raise" names this rule and stays | S2 |
+| b | Concept §3, rule 7 | "the host raises its group's event again" | "the host hands its signal on to its group on its key, as rule 1 does for that one (key, group) without its ancestors: a waiting member receives it, otherwise it becomes pending" | A signal handed on while another member of the group on that key waits must reach that member | Done on the branch of S2, in the words of O11 |
 | c | Concept §3, the consumer loop and the publisher | `await using var lane = await signals.SubscribeAsync("jobs", "workers", ct);` and the comments `result.Groups == 0` and `result is Unavailable` | `using var lane = signals.Subscribe("jobs", "workers");` and the comments "`Applied` with `Groups` 0" and "`Status` is `Unavailable`" | The examples have to compile against the contract | S1 |
 | d | Concept §6, the client verbs | No verb ends a wait | A row `UNWAIT <sid>`: "End the wait of the subscription; answered after any `SIG` already sent" | PQ1 | S3 |
-| e | `AGENTS.md`, principle 2 | "Set is idempotent and never waits for the network." | "Set is idempotent and never waits for a connection. Setting a raised event does nothing. A client that is not connected answers `Unavailable` at once; it never blocks and never queues a set for later. A connected client waits only for the host's answer, which carries the group count; that wait ends at the latest when a silent connection is declared dead." | A connected client waits for the host's answer, which carries the group count (D8) | S1 |
+| e | `AGENTS.md`, principle 2 | "Set is idempotent and never waits for the network." | "Set is idempotent and never waits for a connection. A set while a signal is pending does nothing. A client that is not connected answers `Unavailable` at once; it never blocks and never queues a set for later. A connected client waits only for the host's answer, which carries the group count; that wait ends at the latest when a silent connection is declared dead." | A connected client waits for the host's answer, which carries the group count (D8) | Done in S1, in the words of O11 |
 | f | Concept D8 | "never blocks", because "callers answer immediately instead of waiting for timeouts" | "Set returns the live group count; `Unavailable` at once when not connected; it never waits for a connection, and a connected client waits only for the host's answer, bounded by the dead-peer time", because "callers answer at once instead of waiting for a host that is gone" | The same | S5 |
 | g | `README.md`, "What it is" | "a set never blocks" | "a set never waits for a connection" | The same | S5 |
-| h | Concept §3, the terms "Key" and "Group", rules 1, 2 and 3; D2; D3; §9; `README.md`, line 4 and "What it is" | Key: "Opaque to the host". Group: "Members of one group share each signal". Rule 3: "A group with no members keeps no state". `README.md`, line 4: "one waiter per group wakes". Rule 1: "for every group that currently has members on this key". Rule 2: "the number of groups that have at least one live member". D2: "Coalescing happens on the host per (key, group); Set is idempotent". D3: "One waiting member per group receives a signal". `README.md`: "one set wakes exactly one waiting member of a group" | Key: "Name of an event, e.g. `jobs` or `outbox.mail`; its segments, separated by `.`, make its ancestors (`outbox` for `outbox.mail`)". Group: "Members of one group on a key share each signal of that key". Rule 3: "A group with no members on a key keeps no state for it". `README.md`, line 4: "one waiter per group on a key wakes". Rule 1: "Set(key) acts on the key and on each of its ancestors: for every (key, group) among these keys that currently has members …". Rule 2: "the number of (key, group) pairs over the key and its ancestors that have at least one live member; each counted once". D2 adds: "a set of a key also sets its ancestors". D3: "One waiting member per (key, group) receives a signal". `README.md`: "one set wakes exactly one waiting member of a group on a key". §9, "Possibly later": "wildcards in keys, and setting the descendants of a key" | O7 | S2 |
+| h | Concept §3, the terms "Key" and "Group", rules 1, 2 and 3; D2; D3; §9; `README.md`, line 4 and "What it is" | Key: "Opaque to the host". Group: "Members of one group share each signal". Rule 3: "A group with no members keeps no state". `README.md`, line 4: "one waiter per group wakes". Rule 1: "for every group that currently has members on this key". Rule 2: "the number of groups that have at least one live member". D2: "Coalescing happens on the host per (key, group); Set is idempotent". D3: "One waiting member per group receives a signal". `README.md`: "one set wakes exactly one waiting member of a group" | Key: "Name of what changed, e.g. `jobs` or `outbox.mail`; its segments, separated by `.`, make its ancestors (`outbox` for `outbox.mail`)". Group: "Members of one group on a key share each signal of that key". Rule 3: "A group with no members on a key keeps no state for it". `README.md`, line 4: "one waiter per group on a key wakes". Rule 1: "Set(key) acts on the key and on each of its ancestors: for every (key, group) among these keys that currently has members …". Rule 2: "the number of (key, group) pairs over the key and its ancestors that have at least one live member; each counted once". D2 adds: "a set of a key also sets its ancestors". D3: "One waiting member per (key, group) receives a signal". `README.md`: "one set wakes exactly one waiting member of a group on a key". §9, "Possibly later": "wildcards in keys, and setting the descendants of a key" | O7 | Done on the branch of S2, in the words of O11 |
 
 ## The public contract
 
@@ -191,10 +203,10 @@ words are those of concept §3; a *group* is a consumer group, written `group` i
 - **Results and exceptions.** Expected outcomes are results (`Unavailable`, zero groups,
   `Joined`, `DeadlineReached`); exceptions are for failures and mistakes. A default value
   of a result never claims a success.
-- **Events per (key, group).** The rules of concept §3 act on one (key, group) at a time:
-  members of one group on a key and on an ancestor of it are separate members of
-  separate events, so a set of `a.b` wakes one waiting member of group `g` on `a.b` and
-  one on `a`.
+- **Per (key, group).** The rules of concept §3 act on one (key, group) at a time:
+  members of one group on a key and on an ancestor of it are separate members with
+  separate pending signals, so a set of `a.b` wakes one waiting member of group `g` on
+  `a.b` and one on `a`.
 - **Names.** A *name* is a key or a group, by one rule for both: 1 to 128 characters, each
   one of `A–Z a–z 0–9 . _ : -`, where `.` separates segments and no segment is empty (not
   `a..b`, `.a` or `a.`). Names are compared exactly, case included. The segments of a key
@@ -270,11 +282,11 @@ disposable: whoever created the object disposes it, a container included.
   without the host's answer to its `HELLO` raises nothing: one that reaches no host, gets
   no answer within `DeadPeerTimeout`, or sees a plain end of the connection. A dispose
   raises nothing, and the in-process `ISignals` of a host never raises it.
-- **`SetAsync(key, cancellationToken)`** sets the event of `key` and of each of its
-  ancestors, for every (key, group) among these keys that has members (rule 1, O7): a set
-  of `a.b.c` acts as a set of `a.b.c`, `a.b` and `a`. It sets no descendant and knows no
-  wildcard. Setting a raised event does nothing, and coalescing stays per (key, group);
-  sets are never accumulated, queued or replayed.
+- **`SetAsync(key, cancellationToken)`** sets `key` and each of its ancestors, for every
+  (key, group) among these keys that has members (rule 1, O7): a set of `a.b.c` acts as a
+  set of `a.b.c`, `a.b` and `a`. It sets no descendant and knows no wildcard. A set while
+  a signal is pending does nothing, and coalescing stays per (key, group); sets are never
+  accumulated, queued or replayed.
   - *Results.* `Applied` with `Groups`, the number of (key, group) pairs over the key and
     its ancestors that had at least one live member when the host applied the set, each
     counted once (rule 2); 0 means nobody listens.
@@ -329,13 +341,13 @@ a time.
      reopening on a new connection, until a `WaitAsync` returns it. A remote subscription
      is open only once the host has answered its `SUB`; until then the call waits as rule
      4 says. It does not return `Joined` before that answer, because only an open member
-     makes a set during the pass raise the event (rule 5); a set to a group without
+     makes a set during the pass leave a signal pending (rule 5); a set to a group without
      members is not remembered (rule 3).
   2. **A deadline already passed** — the call returns `DeadlineReached` at once, without
      asking the host, and changes nothing.
-  3. **`Signaled`** — otherwise the call asks the host. If the group's event is raised,
-     it is reset and the call returns `Signaled` (rule 4); otherwise the member waits
-     until a signal is handed to it.
+  3. **`Signaled`** — otherwise the call asks the host. If a signal is pending for its
+     group on its key, the member takes it and the call returns `Signaled` (rule 4);
+     otherwise the member waits until a signal is handed to it.
   4. **Deadline and cancellation** — when `until` is reached or the token is cancelled,
      the wait is ended with the host: atomically in-process, and remotely by asking the
      host and waiting for its answer ([PQ1](#pq1-ending-a-remote-wait)). If the host had
@@ -350,17 +362,17 @@ a time.
      member was busy (rule 7).
 
   After `Joined` or `Signaled` the member is busy until its next `WaitAsync` (rule 5): a
-  set meanwhile raises the group's event, so the next call returns at once, and leaving
+  set meanwhile leaves a signal pending, so the next call returns at once, and leaving
   meanwhile hands the signal on. After a wait that ended under rule 4 without a signal,
-  the member holds no signal: a set raises the group's event, and leaving hands nothing
+  the member holds no signal: a set leaves a signal pending, and leaving hands nothing
   on. A call that ends under rule 2 or 5, or whose token was already cancelled, leaves
   the member as it was.
 
   *Handing a signal on* (rule 7) is handled as a set of that one (key, group), without its
   ancestors (rule 1), and the instrument `sets` does not count it: a member of the group
-  on that key that waits receives it; otherwise the event becomes raised; when the leaving
-  member was the last of its group on that key, nothing is kept (rule 3). So an event is
-  never raised while a member of its group waits.
+  on that key that waits receives it; otherwise it becomes pending; when the leaving
+  member was the last of its group on that key, nothing is kept (rule 3). So a signal is
+  never pending while a member of its group on that key waits.
 
   *Errors.* Thrown by the call: `InvalidOperationException` when another `WaitAsync` of
   this subscription has not completed (that one is not affected);
@@ -417,7 +429,7 @@ public enum SignalWaitResultEnum
 ```
 
 `Joined`: the first pass after subscribing or after a reconnect (rule 6). `Signaled`: a
-signal was handed to the member, or its wait found the group's event raised.
+signal was handed to the member, or its wait found one pending.
 `DeadlineReached`: `until` came first. The value 0 is never returned. Every result is
 followed by one full pass of the application; the result only says why.
 
@@ -508,7 +520,8 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
 The host of one deployment (D6), embedded in the process that owns the background work.
 Several hosts may live in one process; they share nothing (principle 7).
 
-- **Constructor** validates and copies the options and creates the events in memory. The
+- **Constructor** validates and copies the options and creates its signal delivery in
+  memory. The
   in-process `ISignals` works from here on, before `Start`: the port matters only to
   remote clients. Errors: those of the options.
 - **`Start()`** binds `ListenEndPoint`, starts accepting clients and returns once the
@@ -526,7 +539,7 @@ Several hosts may live in one process; they share nothing (principle 7).
   members of the same groups. Errors as `ISignals` says.
 - **`DisposeAsync()`** stops listening, closes every client connection, and ends the
   in-process side: pending in-process waits end with `ObjectDisposedException`, later
-  calls throw it, `State` becomes `Disconnected`. Nothing is kept: the events are memory
+  calls throw it, `State` becomes `Disconnected`. Nothing is kept: the signals are memory
   only (principle 4). Remote clients see their connection end, report `Disconnected`,
   reconnect with backoff, and their members return `Joined` from a host that comes back.
   It completes when the listener and every connection are closed, so the port is free. A
@@ -675,16 +688,16 @@ and the notifications carry what a line needs.
 One `Meter` per host, named `SignalHost.MeterName` (`Moltaro.Signals`), with the host as
 its scope. The instruments carry no tags. This table outlives the plan in `README.md`:
 the sprint that makes an instrument work adds its row there: S2 `subscriptions`, `sets`,
-`coalesced`, `deliveries` and `reraises`, S3 `connections`.
+`coalesced`, `deliveries` and `handed_on`, S3 `connections`.
 
 | Instrument | Kind | Unit | Counts |
 | --- | --- | --- | --- |
 | `moltaro.signals.connections` | `UpDownCounter<long>` | `{connection}` | Client connections whose `HELLO` was accepted and that are open; a connection leaves it when its socket is closed |
 | `moltaro.signals.subscriptions` | `UpDownCounter<long>` | `{subscription}` | Subscriptions open on the host, in-process and remote |
 | `moltaro.signals.sets` | `Counter<long>` | `{set}` | Sets the host applied, in-process and remote |
-| `moltaro.signals.coalesced` | `Counter<long>` | `{event}` | Once per (key, group), ancestors included: a set that found the group's event already raised. A signal handed on is not counted here |
-| `moltaro.signals.deliveries` | `Counter<long>` | `{signal}` | Signals handed to a member: by a set or a signal handed on to a waiting member, or by a wait that found the event raised. `Joined` is not counted |
-| `moltaro.signals.reraises` | `Counter<long>` | `{event}` | Busy members that left while their group on that key kept at least one member, so that their signal was handed on, to a waiting member or by raising the event. A busy member that was the last of its group on that key hands nothing on (rule 3) and is not counted |
+| `moltaro.signals.coalesced` | `Counter<long>` | `{signal}` | Once per (key, group), ancestors included: a set that found a signal already pending. A signal handed on is not counted here |
+| `moltaro.signals.deliveries` | `Counter<long>` | `{signal}` | Signals handed to a member: by a set or a signal handed on to a waiting member, or a pending signal taken by a wait. `Joined` is not counted |
+| `moltaro.signals.handed_on` | `Counter<long>` | `{signal}` | Signals handed on because a busy member left while its group on that key kept at least one member: to a waiting member, or as a pending signal. A busy member that was the last of its group on that key hands nothing on (rule 3) and is not counted |
 
 ### Internal types of S1
 
@@ -727,7 +740,7 @@ internal static class SignalChecks
 - **`ProtocolRules`** states the rules of names and of the token as the protocol fixes
   them. `IsName` is true for 1 to `MaxNameLength` characters of the name rule with no
   empty segment; `IsToken` for 1 to `MaxTokenLength` characters from U+0021 to U+007E.
-  It knows nothing of events or sockets.
+  It knows nothing of signal delivery or sockets.
 - **`SignalChecks`** holds the checks of the public members. `CheckName` throws
   `ArgumentNullException` for `null` and `ArgumentException` when `IsName` is false;
   `CheckToken` throws `ArgumentException` for `null` or when `IsToken` is false;
@@ -763,8 +776,8 @@ concept §6 and the contract above:
 | Host → client | `OK <rid> [<groups>]` and `ERR <rid> <code> <text>` as replies, `SIG <sid>` and `PONG` |
 | Replies | Every reply names the request it answers; pushes are told apart by their verb. `HELLO`, `SUB`, `UNWAIT` and `SET` are answered; `WAIT` is answered only by a `SIG`; `PING` by `PONG` |
 | Subscription ids | A client never uses a `<sid>` twice on one connection: it takes them from a counter. The host ignores `UNSUB`, `WAIT` and `UNWAIT` for a `<sid>` that is not open, and the client ignores a `SIG` for a `<sid>` it has closed: the host handed that signal on when it removed the member |
-| Order | The first line is `HELLO`; nothing else is accepted before its `OK`, and a correct client sends nothing else, `PING` included, until its `HELLO` is answered. The host handles the lines of one connection in order, and writes what it sends on one connection in the order of the events that cause it, so a `SIG` written before an answer is read before it |
-| A member on the host | Busy once its `SUB` is answered (`Joined` counts as a signal, rule 6). `WAIT` arms it; `SIG` makes it busy; `UNWAIT` makes an armed member idle and leaves a busy one busy; `UNSUB` or the end of its connection removes it and, if it was busy, hands its signal on as a set of that one (key, group) does, without its ancestors (rules 1 and 7). An event is never raised while a member of its group waits |
+| Order | The first line is `HELLO`; nothing else is accepted before its `OK`, and a correct client sends nothing else, `PING` included, until its `HELLO` is answered. The host handles the lines of one connection in order, and writes what it sends on one connection in the order of what causes it, so a `SIG` written before an answer is read before it |
+| A member on the host | Busy once its `SUB` is answered (`Joined` counts as a signal, rule 6). `WAIT` arms it; `SIG` makes it busy; `UNWAIT` makes an armed member idle and leaves a busy one busy; `UNSUB` or the end of its connection removes it and, if it was busy, hands its signal on as a set of that one (key, group) does, without its ancestors (rules 1 and 7). A signal is never pending while a member of its group on that key waits |
 | Names, token | Names of 1 to 128 characters from `A–Z a–z 0–9 . _ : -`, with no empty segment between the `.`s; a token of 1 to 256 characters from U+0021 to U+007E; both limits fixed by the protocol. A `SET` of a key also sets its ancestors (O7); the line does not change. The line length bound follows from them |
 | Limits, as options | `MaxConnections`, `MaxSubscriptionsPerConnection`, `DeadPeerTimeout` of the host; `HeartbeatInterval`, `DeadPeerTimeout`, `ReconnectDelay`, `MaxReconnectDelay` of the client |
 | Liveness | The client sends `PING` when it has sent nothing, or received nothing, for `HeartbeatInterval`, and at most one `PING` in that time; the host answers `PONG`. Each side closes a connection on which it received nothing for its `DeadPeerTimeout` |
@@ -866,14 +879,14 @@ reason, and it goes to the owner as a change of the contract.
 ### Order and why these splits
 
 ```text
-S1 contract ── S2 state machine, in-process ── S3 protocol, host over TCP ── S4 refactoring ── S5 remote client ── S6 hosting, release
+S1 contract ── S2 signal delivery, in-process ── S3 protocol, host over TCP ── S4 refactoring ── S5 remote client ── S6 hosting, release
 ```
 
 - **S1 alone** is the one contract stage of O2: the whole public surface, its validation,
   the scenario tests of every public behavior and the samples. It implements nothing but
   checks, so its review is a review of the contract.
 - **S2 apart from S3**, because they are different zones of `AGENTS.md` with different
-  priorities, and the state machine is where correctness matters most. S2 needs no
+  priorities, and signal delivery is where correctness matters most. S2 needs no
   socket: it finishes the in-process `ISignals`, so the rules of §3 are reviewed alone.
 - **S3 apart from S5**, because the host side and the client side are each a concurrent
   mechanism with failure modes of their own. S3 tests the host with raw protocol lines;
@@ -891,7 +904,7 @@ S1 contract ── S2 state machine, in-process ── S3 protocol, host over TC
 | Sprint | Result | Track | Status |
 | --- | --- | --- | --- |
 | S1 | The public contract, the projects and the test lane | Full | Done, 18 November 2026: 3 review rounds |
-| S2 | The event state machine and the in-process host | Full | Not started |
+| S2 | Signal delivery and the in-process host | Full | Done, 18 November 2026: internal contract approved by the owner after 4 review rounds; sprint review 3 rounds |
 | S3 | The protocol, its codec and the host over TCP | Full | Not started |
 | S4 | Refactoring of the code base after S3 | Refactoring | Not started |
 | S5 | The remote client: liveness and reconnection | Full | Not started |
@@ -1000,7 +1013,7 @@ approval of this plan, with PQ2 and PQ3 answered.
   [Internal types of S1](#internal-types-of-s1); the measurement program;
   `docs/protocol.md`; explanations.
 
-### S2 · The event state machine and the in-process host
+### S2 · Signal delivery and the in-process host
 
 **Track:** full · **Branch:** `epic-1/sprint-02-event-state-machine` · **Needs:** S1.
 
@@ -1012,48 +1025,150 @@ approval of this plan, with PQ2 and PQ3 answered.
   - *Public, from S1, now working:* the constructor, `State`, `StateChanged`, `SetAsync`,
     `Subscribe` and `DisposeAsync` of `SignalHost` for the in-process side; `WaitAsync` and
     `Dispose` of its subscriptions; the instruments `subscriptions`, `sets`, `coalesced`,
-    `deliveries` and `reraises`. `Start` still refuses.
-  - *Internal:* the event state machine, in its own folder and namespace
-    (`Moltaro.Signals.Events` is proposed), tested directly through `InternalsVisibleTo`
-    for `Moltaro.Signals.Tests`. Its types are written into this brief after the study, as
-    [Rules for every sprint](#rules-for-every-sprint) says. They hold the invariant that
-    an event is never raised while a member of its group waits, and they have to be able
-    to: open a member of a key and group, busy from the start; apply a set and answer the
-    number of (key, group) pairs with members and which waiting member of each group on
-    each key it sets receives the signal; arm a member's wait, answering at once when the
-    group's event is raised; end a wait, answering whether a signal was handed first,
-    otherwise leaving the member idle; close a member, answering which waiting member of
-    its group on its key receives the signal it hands on, or that the event became raised,
-    or that nothing is kept because it was the last member; and give the counts of the
-    metrics. They perform no I/O, await nothing, run no caller code and complete no waiter
-    themselves; they know nothing of sockets. The contract author's work is shown to the
-    owner and committed only after the owner approved it (O4).
-- **Study.** Sources, for example: `SemaphoreSlim` and `System.Threading.Channels` of
-  dotnet/runtime (MIT); `AsyncAutoResetEvent` of Microsoft.VisualStudio.Threading (MIT);
-  queue groups in the NATS server (Apache-2.0). Questions:
-  1. How a waiter is completed so that its continuation never runs under a lock and never
-     inside the call that completed it, as "Completions" in the contract requires, and
-     what a wake costs in time and allocations that way.
-  2. How a wait that ends by its deadline or its token and a signal that arrives at the
-     same moment are decided at one point, so that a wait returns the signal or ends
-     without it, never both and never neither.
-  3. Which waiting member of a group is chosen, first come or last come, and why.
-  4. Which structure holds the events, so that a group without members keeps nothing and
-     memory grows only with keys × groups and subscriptions.
-  5. How deadlines are timed with `TimeProvider` without a timer allocated per wait, and
-     how a deadline beyond the longest timer is treated as none.
-  6. One lock for all events of a host or a finer one, decided by a figure.
-  7. How the host finds the ancestors of a key without allocating, for example by the
-     alternate lookup of `Dictionary` with `ReadOnlySpan<char>`.
+    `deliveries` and `handed_on`. `Start` still refuses.
+  - *Internal:* signal delivery in the folder `src/Moltaro.Signals/Delivery`,
+    namespace `Moltaro.Signals.Delivery`, one type per file, tested directly through
+    `InternalsVisibleTo` for `Moltaro.Signals.Tests`. Written after the study, as
+    [Rules for every sprint](#rules-for-every-sprint) says. The contract author's work is
+    shown to the owner and committed only after the owner approved it (O4).
+
+    ```csharp
+    namespace Moltaro.Signals.Delivery;
+
+    internal sealed class SignalDelivery
+    {
+        internal int KeyCount { get; }
+
+        internal int GroupCount { get; }
+
+        internal void Open(GroupMember member, string key, string group);
+
+        internal SetOutcome Set(ReadOnlySpan<char> key);
+
+        internal bool Arm(GroupMember member);
+
+        internal bool EndWait(GroupMember member);
+
+        internal CloseOutcome Close(GroupMember member);
+
+        internal GroupMember? CloseAll();
+    }
+
+    internal class GroupMember
+    {
+        internal GroupMemberStateEnum State { get; set; }
+
+        internal GroupMember? NextWoken { get; set; }
+    }
+
+    internal enum GroupMemberStateEnum { Busy, Idle, Waiting }
+
+    internal readonly record struct SetOutcome(int Groups, int Coalesced, GroupMember? FirstWoken);
+
+    internal readonly record struct CloseOutcome(GroupMember? Receiver, bool Pending);
+    ```
+
+    - **`SignalDelivery`**, one per host, is not thread-safe: the host calls it only under
+      its lock. It holds the pending signals and the members per (key, group), and the
+      invariant that a signal is never pending while a member of its (key, group) waits. A
+      (key, group) without members is not held, nor a key without groups. It performs no
+      I/O, awaits nothing, runs no caller code, completes no waiter and knows nothing of
+      sockets.
+    - **`KeyCount`**, **`GroupCount`**: the keys and the (key, group) pairs it holds.
+    - **`Open(member, key, group)`** adds a new member, `Busy` (rule 6). The caller has
+      checked the names, for `Set` too.
+    - **`Set(key)`** applies a set to the key and to each of its ancestors (rules 1 and 2,
+      O7). For each (key, group) held among them: if a member waits, the one that has
+      waited longest becomes `Busy` and is chained into `FirstWoken`; otherwise the signal
+      becomes pending, and `Coalesced` counts it if one was pending already. `Groups` is
+      the number of those (key, group) pairs. `key` is a span because the ancestors are
+      its prefixes, looked up without allocating.
+    - **`Arm(member)`**, for a member that does not wait: `true` when a signal was
+      pending, which the member takes, and the member is `Busy`; `false` when the member
+      now waits, last in its queue.
+    - **`EndWait(member)`**: `true` when the member waited and is now `Idle`; `false`
+      when a signal came first and it is `Busy`, or when it does not wait; then nothing
+      changes.
+    - **`Close(member)`** removes the member, which is then `Idle`. A `Busy` member hands
+      its signal on as a set of its own (key, group) without ancestors (rule 7): to the
+      `Receiver`, now `Busy`, when a member waits; otherwise `Pending` is `true`, whether
+      or not a signal was pending already. Neither
+      when the member was `Idle` or waiting, or the last of its group on that key, so that
+      nothing is kept (rule 3). `Close` of a closed member does nothing.
+    - **`CloseAll()`** removes every member, each then `Idle`, and returns the chain of
+      those that waited, so that the host ends their waits.
+    - Both classes have parameterless constructors; `GroupMember` is not sealed. A chain
+      ends with `null`, so `FirstWoken` and the result of `CloseAll()` are `null` when
+      nobody was woken. The setters are internal to the assembly, as C# has no access
+      level for a folder; the comments state who writes them.
+    - **`GroupMember`** is one member. The in-process subscription derives from it, and in
+      S3 the remote member: one object per subscription, with nothing to look up from the
+      delivery to the subscription. Only `SignalDelivery` changes `State`. `NextWoken`
+      links the members of an outcome's chain. Only `Set` and `CloseAll` write
+      `NextWoken`, for the members they take out of `Waiting`; `Close` leaves it. The host
+      reads a member's `NextWoken` before it completes that member's wait: once completed,
+      the member may wait and be woken again, which relinks it. The links of the waiting
+      queue are fields of the folder, not of this contract.
+    - **The host and the delivery.** The host checks its own dispose and the
+      subscription's under the lock, in the same section that calls `Open`, `Arm` or
+      `Set`, so that `SignalDelivery` never receives a closed member.
+- **Study** (done, nothing adapted, `THIRD-PARTY-NOTICES.md` unchanged; the public
+  contract is not reopened). Sources at pinned commits: dotnet/runtime v10.0.0
+  (`60629d14374c56f1cb51819049ad1fa529307f8d`) and Microsoft.VisualStudio.Threading
+  (`6e20009d3a2232208dd067cf820bab331e0ffb45`), both MIT; the NATS server v2.12.9
+  (`5919e2bb31ba21cd3f3da4f148f5f5cd44e1faf7`), Apache-2.0. Decisions the implementer and
+  the test author share:
+  - **FIFO.** The member that has waited longest in its (key, group) receives a signal,
+    so that signals spread over the lanes. It is this brief's choice, not a rule of the
+    concept: tests do not assert it, and a test with two waiting members does not depend
+    on which one wakes.
+  - **One `System.Threading.Lock` per host** guards `SignalDelivery`, the wait fields of
+    each subscription, and the timer calls `TimeProvider.CreateTimer` and `ITimer.Change`.
+    Never under it: completing a wait, `Counter.Add`, registering a cancellation, or any
+    other code of the application. The timer calls are the one exception: they are safe
+    because the due time is at least 1 ms and a `TimeProvider` does not call back inside
+    them; the timer's own lock is taken inside the host's, never the other way round.
+  - **Completion after the lock.** The host completes the members an outcome names after
+    it released the lock, each wait through its own `TaskCompletionSource` created with
+    `RunContinuationsAsynchronously`. A wait that returns at once allocates nothing. Every
+    completer uses the `Try` form, so whichever comes first wins; a dispose completes a
+    wait that has not completed yet with `ObjectDisposedException`. A woken member is
+    `Busy` in `SignalDelivery` either way, so its signal is handed on (rule 7).
+  - **One decision point.** A set, a signal handed on, the deadline timer, the
+    cancellation callback and a dispose each take the lock and move the member out of
+    `Waiting`; only the one that finds it `Waiting` completes the wait, except a dispose,
+    which also completes a wait that a set has woken but that has not completed yet.
+    Cancellation is registered after `Arm`, outside the lock, and released by the wait
+    itself with `Unregister` once its task has completed. Its callback
+    acts only on the wait it was registered for: under the lock it compares its own
+    `TaskCompletionSource` with the member's current one and does nothing on a mismatch.
+  - **Deadlines.** One `ITimer` per subscription, created on its first wait with a
+    deadline with the flow of the execution context suppressed; every later wait with a
+    deadline arms it with `Change`. The due time is `until`
+    minus now, rounded up to whole milliseconds; above `SignalChecks.LongestTimer` it
+    counts as none, at most 0 is rule 2. When the timer fires, under the lock: a member
+    that waits and whose deadline has come is ended; one that waits with a later
+    deadline is re-armed for the rest; otherwise nothing happens. Closing a subscription
+    disposes its timer, outside the lock. Limitation: after the host's dispose, a timer
+    armed for an earlier wait may fire once and does nothing, and a wait that a set has
+    just woken may still return `Signaled`.
+  - **Ancestors** through a `Dictionary` with `StringComparer.Ordinal` and its
+    `GetAlternateLookup<ReadOnlySpan<char>>()` kept in a field, walked up with
+    `LastIndexOf('.')`.
+  - **Metrics from the outcomes**, recorded after the lock: `subscriptions` +1 after
+    `Open` and −1 after a `Close` of an open member; `sets` one per `Set`; `coalesced` its
+    `Coalesced`; `deliveries` the members it woke, an `Arm` that returned `true`, and a
+    `Close` with a `Receiver`; `handed_on` a `Close` with a `Receiver` or `Pending`.
+  - **`Joined`** is a flag of the subscription, not of `SignalDelivery`.
 - **To read.** [Concept](../concept.md), §3, §5, §11 (18 November 2026); `AGENTS.md`,
   principles 1–4, 6–8, 11 and "Tests And Samples"; this plan, "The public contract".
 - **Acceptance.**
-  - A deterministic test of the state machine for every rule 1–7 of §3, each named for the
+  - A deterministic test of signal delivery for every rule 1–7 of §3, each named for the
     rule it states; for a wait that ends by deadline or cancellation, in both orders
     against a signal; for a busy member that leaves while another member of its group on
     its key already waits, in that order, which hands the waiting member the signal; for
     an idle member that leaves (nothing handed on); for a group whose last member leaves
-    (the state machine keeps nothing for it, and nothing is counted as a re-raise).
+    (the delivery keeps nothing for it, and nothing is counted as handed on).
   - Tests of ancestors (O7): a set of a child wakes a waiting member of its ancestor; a set
     of an ancestor wakes no member of a child; two sets of different children coalesce on
     their ancestor; `Groups` counts each (key, group) over the levels once; with one
@@ -1069,18 +1184,23 @@ approval of this plan, with PQ2 and PQ3 answered.
     per wake of a waiting member; sets per second on one thread with most of them
     coalesced; the bytes retained per (key, group) and per subscription, and that they
     stay flat over a million sets; allocations of a wait with a deadline and a cancellable
-    token; a set of a key of three segments with members on one level only. The targets
-    are judged as the owner answered PQ2.
+    token; a set of a key of three segments with members on one level only; and, reported
+    only, N = 2, 4 and 8 threads, each running the workload of PQ2 on ten single-segment
+    keys of its own (one group per key, whose member wakes for at most one set in a
+    hundred) for a fixed time after warm-up, the total rate printed with the processor
+    count. A finer lock comes up only if a target of §11 is missed, by the rule of the
+    process on a measured fall. The targets are judged as the owner answered PQ2.
   - **Explanation E1**, "How a set wakes one member of each group on a key", in
     `docs/explanations` as Markdown and as animated HTML, written as [Rules for every
     sprint](#rules-for-every-sprint) says: two groups on one key, a set that wakes one
-    waiting member of each, a set while a member is busy, twenty sets that are one, a wait
-    that returns at once, a busy member that leaves while another waits, and a deadline
-    that meets a signal; it may show in one step a set of a child that also sets its
-    ancestor. It links to concept §3 as the rule.
-  - The documents step makes the edits of PQ3, rows b and h, and writes the answer to
-    PQ2 into concept §11. The in-process samples run to the end; `README.md` says the
-    in-process host works and lists the instruments of this sprint.
+    waiting member of each, a set that leaves a signal pending while a member is busy,
+    twenty sets that are one, a wait that takes a pending signal at once, a busy member
+    that leaves and hands its signal on to one that waits, and a deadline that meets a
+    signal; it may show in one step a set of a child that also sets its ancestor. It links
+    to concept §3 as the rule.
+  - The documents step writes the answer to PQ2 into concept §11; PQ3, rows b and h, are
+    done on this branch with O11. The in-process samples run to the end; `README.md` says
+    the in-process host works and lists the instruments of this sprint.
 - **A test of S1 to tighten** (from the review of S1). In
   `src/Moltaro.Signals.Tests/Names/NameRuleTests.cs`, the test
   `A_name_that_keeps_the_rule_is_accepted_as_a_key_and_as_a_group` accepts any exception
@@ -1088,6 +1208,13 @@ approval of this plan, with PQ2 and PQ3 answered.
   test author of S2 replaces its `Record.Exception` with a plain call and skips the test
   with the shared reason, as a correction of a wrong test (`process.md`), with the reason
   in the commit message; the implementer removes the skip.
+- **Small changes made on this branch** (`process.md`, "Small changes during a sprint"):
+  the time limit of the CI jobs (Q2 of the [open questions](open-questions.md), the
+  coordinator); O11, which edited `docs/concept.md`, `README.md`, `AGENTS.md`,
+  `docs/work/process.md` and this plan (the owner); the rule of `AGENTS.md` that internal
+  members are commented with `//` (the coordinator, from the contract step of S2); the
+  `Outer.Nested.cs` form of a nested type in `AGENTS.md`, "Organization" (the coordinator,
+  from the independent review of S2).
 - **Out of scope.** Sockets, `Start`, the protocol, the client, the instrument
   `connections`.
 
@@ -1109,8 +1236,8 @@ approval of this plan, with PQ2 and PQ3 answered.
     this brief after the study. They have to be able to: parse one client line into a
     command with its fields, or a refusal with its code; format every host line; parse
     every host line and format every client line, which S5 uses. They know nothing of
-    events or sockets. The transport that ties the codec, the sockets and the state
-    machine together (`Moltaro.Signals.Transport` is proposed) is tested through the
+    signal delivery or sockets. The transport that ties the codec, the sockets and signal
+    delivery together (`Moltaro.Signals.Transport` is proposed) is tested through the
     protocol, not through internal types. The contract author's work, with
     `docs/protocol.md`, is shown to the owner and committed only after the owner approved
     it (O4).

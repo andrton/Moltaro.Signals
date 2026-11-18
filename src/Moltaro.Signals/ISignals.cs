@@ -1,8 +1,8 @@
 namespace Moltaro.Signals;
 
 /// <summary>
-/// Remote auto-reset events with consumer groups: the one interface of code inside the host process and of code in
-/// other processes, with the same semantics.
+/// Remote signals with consumer groups: the one interface of code inside the host process and of code in other
+/// processes, with the same semantics.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -14,8 +14,8 @@ namespace Moltaro.Signals;
 /// </para>
 /// <para>
 /// The rules act on one (key, group) at a time: members of one group on a key and on an ancestor of it are separate
-/// members of separate events, so a set of <c>a.b</c> wakes one waiting member of group <c>g</c> on <c>a.b</c> and
-/// one on <c>a</c>.
+/// members with separate pending signals, so a set of <c>a.b</c> wakes one waiting member of group <c>g</c> on
+/// <c>a.b</c> and one on <c>a</c>.
 /// </para>
 /// <para>
 /// It is not disposable: whoever created the object disposes it, a container included.
@@ -94,10 +94,9 @@ public interface ISignals
     event EventHandler<SignalConnectionChangedEventArgs>? StateChanged;
 
     /// <summary>
-    /// Sets the event of a key and of each of its ancestors, for every (key, group) among these keys that has members
-    /// on the host.
+    /// Sets a key and each of its ancestors, for every (key, group) among these keys that has members on the host.
     /// </summary>
-    /// <param name="key">The key whose event is set; a name, as the remarks of <see cref="ISignals"/> define it.</param>
+    /// <param name="key">The key that is set; a name, as the remarks of <see cref="ISignals"/> define it.</param>
     /// <param name="cancellationToken">
     /// Ends the wait for the host's answer. A token that is already cancelled gives a cancelled task, and nothing is
     /// set.
@@ -114,9 +113,9 @@ public interface ISignals
     /// <para>
     /// A set of <c>a.b.c</c> acts as a set of <c>a.b.c</c>, <c>a.b</c> and <c>a</c>. It sets no descendant and knows
     /// no wildcard. For every (key, group) among these keys that has members: if a member of the group on that key
-    /// waits, the signal is handed to exactly one such member; otherwise that event becomes raised. Setting a raised
-    /// event does nothing, and coalescing stays per (key, group); sets are never accumulated, queued or replayed. A
-    /// group with no members on a key keeps no state there: the set is not remembered for it.
+    /// waits, the signal is handed to exactly one such member; otherwise the signal becomes pending. A set while a
+    /// signal is pending does nothing, and coalescing stays per (key, group); sets are never accumulated, queued or
+    /// replayed. A group with no members on a key keeps no state there: the set is not remembered for it.
     /// </para>
     /// <para>
     /// In-process, and on a client that is not connected, the call completes synchronously: no network, no queue,
