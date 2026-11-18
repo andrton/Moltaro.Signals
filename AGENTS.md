@@ -78,9 +78,9 @@ outside the primitive is declined, or noted as planned in the concept.
    queues, orders or replays signals.
 2. **Set is idempotent and never waits for a connection.** A set while a signal is
    pending does nothing. A client that is not connected answers `Unavailable` at once; it
-   never blocks and never queues a set for later. A connected client waits only for the host's answer,
-   which carries the group count; that wait ends at the latest when a silent connection
-   is declared dead.
+   never blocks and never queues a set for later. A connected client waits only for the
+   host's answer, which carries the group count; that wait ends at the latest when a
+   silent connection is declared dead.
 3. **The last set is never lost.** Every rule of delivery serves this guarantee: one
    waiting member of a group on a key receives a signal; a member is busy until its next
    wait, and a set meanwhile leaves a signal pending; a member that leaves while busy

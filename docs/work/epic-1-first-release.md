@@ -1213,7 +1213,9 @@ approval of this plan, with PQ2 and PQ3 answered.
   the time limit of the CI jobs (Q2 of the [open questions](open-questions.md), the
   coordinator); O11, which edited `docs/concept.md`, `README.md`, `AGENTS.md`,
   `docs/work/process.md` and this plan (the owner); the rule of `AGENTS.md` that internal
-  members are commented with `//` (the coordinator, from the contract step of S2).
+  members are commented with `//` (the coordinator, from the contract step of S2); the
+  `Outer.Nested.cs` form of a nested type in `AGENTS.md`, "Organization" (the coordinator,
+  from the independent review of S2).
 - **Out of scope.** Sockets, `Start`, the protocol, the client, the instrument
   `connections`.
 
