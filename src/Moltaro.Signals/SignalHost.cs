@@ -504,23 +504,6 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
         }
     }
 
-    // The due time of a timer for a deadline, rounded up to whole milliseconds, because a timer counts whole
-    // milliseconds and would otherwise fire before the deadline. Zero when the deadline has come; null when it is
-    // further away than the longest timer, where it counts as none.
-    private static TimeSpan? TimeUntil(DateTimeOffset deadline, DateTimeOffset now)
-    {
-        long ticks = (deadline - now).Ticks;
-
-        if (ticks <= 0)
-        {
-            return TimeSpan.Zero;
-        }
-
-        TimeSpan due = TimeSpan.FromMilliseconds((ticks + TimeSpan.TicksPerMillisecond - 1) / TimeSpan.TicksPerMillisecond);
-
-        return due <= SignalChecks.LongestTimer ? due : null;
-    }
-
     // After the lock: answers a connection beyond MaxConnections with ERR 0 connections in one synchronous send, which
     // does not wait, because the send buffer of a socket just accepted is empty, and closes it. It has no reader and no
     // timer.

@@ -689,7 +689,7 @@ public sealed partial class SignalHost
                 {
                     long from = refused ? _acceptedTicks : Volatile.Read(ref _lastReceivedTicks);
                     var deadline = new DateTimeOffset(from, TimeSpan.Zero);
-                    TimeSpan? rest = TimeUntil(deadline + _host._deadPeerTimeout, now);
+                    TimeSpan? rest = SignalChecks.TimeUntil(deadline + _host._deadPeerTimeout, now);
 
                     if (rest != TimeSpan.Zero)
                     {

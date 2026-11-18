@@ -36,7 +36,9 @@ public sealed partial class SignalHost
         public ValueTask<SignalWaitResultEnum> WaitAsync(DateTimeOffset? until, CancellationToken cancellationToken = default)
         {
             // Read before the lock is taken, because the TimeProvider is code of the application.
-            TimeSpan? dueTime = until is { } deadline ? TimeUntil(deadline, _host._timeProvider.GetUtcNow()) : null;
+            TimeSpan? dueTime = until is { } deadline
+                ? SignalChecks.TimeUntil(deadline, _host._timeProvider.GetUtcNow())
+                : null;
             TaskCompletionSource<SignalWaitResultEnum>? waiter = null;
 
             lock (_host._lock)
@@ -217,7 +219,7 @@ public sealed partial class SignalHost
                     return;
                 }
 
-                TimeSpan? rest = TimeUntil(deadline, now);
+                TimeSpan? rest = SignalChecks.TimeUntil(deadline, now);
 
                 if (rest != TimeSpan.Zero)
                 {

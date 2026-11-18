@@ -2,13 +2,30 @@ using Moltaro.Signals.Protocol;
 
 namespace Moltaro.Signals;
 
-// The argument checks that the public members of the host and of the client share, so that each lives once. Each
-// check reports the ParamName it is given.
+// The argument checks that the public members of the host and of the client share, so that each lives once, and the
+// longest timer of TimeProvider with the due time it bounds. Each check reports the ParamName it is given.
 internal static class SignalChecks
 {
     // The longest timer of TimeProvider: the most a TimeSpan option may be, and the bound beyond which a deadline of
     // WaitAsync counts as none.
     internal static readonly TimeSpan LongestTimer = TimeSpan.FromMilliseconds(uint.MaxValue - 1);
+
+    // The due time of a timer for a deadline, rounded up to whole milliseconds, because a timer counts whole
+    // milliseconds and would otherwise fire before the deadline. Zero when the deadline has come; null when it is
+    // further away than LongestTimer, where it counts as none.
+    internal static TimeSpan? TimeUntil(DateTimeOffset deadline, DateTimeOffset now)
+    {
+        long ticks = (deadline - now).Ticks;
+
+        if (ticks <= 0)
+        {
+            return TimeSpan.Zero;
+        }
+
+        TimeSpan due = TimeSpan.FromMilliseconds((ticks + TimeSpan.TicksPerMillisecond - 1) / TimeSpan.TicksPerMillisecond);
+
+        return due <= LongestTimer ? due : null;
+    }
 
     internal static void CheckName(string? name, string paramName)
     {
