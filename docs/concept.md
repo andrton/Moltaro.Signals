@@ -27,17 +27,17 @@ Such platforms often use a message broker for that nudge. In practice it behaves
 - **An extra service** has to be shipped, configured, secured and monitored, only to carry
   messages whose content nobody reads.
 
-The observation behind this project: **a wake-up is not a message, it is the state of an
-auto-reset event.** Twenty "set" calls on an already set event are one set. A lost
+The observation behind this project: **a wake-up is not a message, it is a signal that is
+either pending or taken.** Twenty sets while a signal is pending are one set. A lost
 wake-up is harmless if a receiver always looks once after it (re)connects. What matters is
 only this: never miss the *last* set, never wake more receivers than needed, and know at
 once whether the other side is alive.
 
 ## 2. What it is
 
-A small .NET library with one primitive: a **remote auto-reset event with consumer groups**.
+A small .NET library with one primitive: **remote signals with consumer groups**.
 
-- A **host** keeps the events in memory. It is embedded in one application process (the
+- A **host** keeps the signals in memory. It is embedded in one application process (the
   process that owns the background work) and listens on a TCP port.
 - **Clients** in other processes connect over one persistent TCP connection that speaks a
   line-based text protocol. Code inside the host process uses the same client interface
@@ -53,10 +53,11 @@ It is not a message broker, a queue, a lock or a pub/sub bus with payloads.
 
 | Term | Meaning |
 | --- | --- |
-| Key | Name of an event, e.g. `jobs` or `outbox.mail`. Opaque to the host |
-| Group | Who competes for a key. Members of one group share each signal; different groups each get their own |
+| Key | Name of what changed, e.g. `jobs` or `outbox.mail`; its segments, separated by `.`, make its ancestors (`outbox` for `outbox.mail`) |
+| Group | Who competes for a key: a consumer group. Members of one group on a key share each signal of that key; different groups each get their own |
 | Subscription | One member of a group on one connection. A worker with four lanes opens four subscriptions |
-| Event | The state of one (key, group): raised or not raised |
+| Signal | What a set gives each group that has members on a key: "look now". It carries no data |
+| Pending signal | A signal that no member of the group on that key has taken yet, because none waited when the set came. At most one per (key, group); a set while one is pending does nothing |
 
 Groups give both delivery styles with one rule:
 
@@ -66,27 +67,31 @@ Groups give both delivery styles with one rule:
 
 ### Rules
 
-1. **Set(key)** — for every group that currently has members on this key: if a member is
-   waiting, the signal is handed to exactly one waiting member; otherwise the group's event
-   becomes raised. Setting a raised event does nothing. **Set is idempotent.**
-2. **Set returns** the number of groups that have at least one live member. Zero means
-   nobody listens, so the caller can answer at once instead of waiting.
-3. A group with **no members** keeps no state: a set is not remembered for it. A member
-   that joins later starts with one pass anyway (rule 6).
-4. **Wait(subscription)** — if the group's event is raised, it is reset and Wait returns at
-   once; otherwise the member waits until a signal is handed to it, until its own deadline,
-   or until reconnect.
+1. **Set(key)** acts on the key and on each of its ancestors: for every (key, group) among
+   these keys that currently has members, if a member is waiting, the signal is handed to
+   exactly one waiting member; otherwise the signal becomes pending. A set while a signal
+   is pending does nothing. **Set is idempotent.**
+2. **Set returns** the number of (key, group) pairs over the key and its ancestors that
+   have at least one live member, each counted once. Zero means nobody listens, so the
+   caller can answer at once instead of waiting.
+3. A group with **no members on a key** keeps no state for it: a set is not remembered for
+   it. A member that joins later starts with one pass anyway (rule 6).
+4. **Wait(subscription)** — if a signal is pending for its group on its key, the member
+   takes it and Wait returns at once; otherwise the member waits until a signal is handed
+   to it, until its own deadline, or until reconnect.
 5. **Busy until the next Wait.** A member that received a signal is busy until it calls
-   Wait again. A set that arrives meanwhile raises the event, so the member's next Wait
-   returns at once. This is the classic auto-reset pattern: *"if it was set while I was
-   working, it is armed when I come back"*. At most one pass runs and at most one is
-   pending per member; nothing accumulates.
+   Wait again. A set that arrives meanwhile leaves a signal pending, so the member's next
+   Wait returns at once: *"if it was set while I was working, it is waiting for me when I
+   come back"*. At most one pass runs and at most one more is due per member, and at most
+   one signal is pending per group on a key; nothing accumulates.
 6. **Joining and reconnecting count as a signal.** The first Wait after subscribing or
    after a reconnect returns at once with `Joined`; the member does one full pass. This is
    what makes the host stateless: after a host restart nothing is lost.
-7. **Leaving while busy re-raises.** If a busy member disconnects or unsubscribes before
-   its next Wait, the host raises its group's event again, so another member (or the same
-   one after reconnect) does the pass.
+7. **Leaving while busy hands the signal on.** If a busy member disconnects or unsubscribes
+   before its next Wait, the host hands its signal on to its group on its key, as rule 1
+   does for that one (key, group) without its ancestors: a waiting member receives it,
+   otherwise it becomes pending. So another member (or the same one after reconnect) does
+   the pass.
 
 No ordering, history, payload or exactly-once processing is provided. Work must stay in
 durable storage and be claimed there; a signal only makes waiting free.
@@ -148,7 +153,7 @@ these principles are decided:
 | `HELLO <protocol-version> <token>` | First line; wrong token or version closes the connection |
 | `SUB <sid> <key> <group>` | Open subscription `<sid>` (a client-chosen number) |
 | `WAIT <sid>` | Arm the subscription; ends its busy state |
-| `UNSUB <sid>` | Close the subscription (re-raises if busy) |
+| `UNSUB <sid>` | Close the subscription (hands its signal on if busy) |
 | `SET <rid> <key>` | Set; `<rid>` is a request id echoed in the reply |
 | `PING` | Heartbeat |
 
@@ -190,9 +195,9 @@ documented in the code.
 | # | Decision | Why |
 | --- | --- | --- |
 | D1 | A signal has no payload, history or persistence | Receivers read facts from their storage; anything else re-creates a broker |
-| D2 | Coalescing happens on the host per (key, group); Set is idempotent | Duplicates must not exist anywhere, not only inside one process |
-| D3 | One waiting member per group receives a signal; groups provide broadcast | No thundering herd, and both styles with one rule |
-| D4 | Busy until the next Wait; leaving while busy re-raises | No lost work when a receiver dies mid-pass, without acknowledgements |
+| D2 | Coalescing happens on the host per (key, group): at most one signal is pending; Set is idempotent; a set of a key also sets its ancestors | Duplicates must not exist anywhere, not only inside one process |
+| D3 | One waiting member per (key, group) receives a signal; groups provide broadcast | No thundering herd, and both styles with one rule |
+| D4 | Busy until the next Wait; leaving while busy hands the signal on | No lost work when a receiver dies mid-pass, without acknowledgements |
 | D5 | Joining and reconnecting return `Joined` once | The host can be memory-only and restart freely |
 | D6 | Embedded host, one per deployment, no cluster | The process that does the background work is the natural owner; nothing else to run |
 | D7 | Persistent TCP connection, text line protocol, 1 s / 3 s heartbeats | Liveness is visible in seconds; trivial to debug and to implement in any language |
@@ -211,9 +216,9 @@ Not in v1: payloads, durable state, clustering or failover, ordering, exactly-on
 delivery, locks or leases, browser clients, TLS, a standalone server binary, non-.NET
 clients.
 
-Possibly later, only with a real consumer: a manual-reset event (stays raised for all
-members until explicitly reset), watching a group's presence, TLS, clients in other
-languages.
+Possibly later, only with a real consumer: a signal that stays pending for all members
+until it is cleared, wildcards in keys, setting the descendants of a key, watching a
+group's presence, TLS, clients in other languages.
 
 ## 10. Existing tools and why they are not used
 
@@ -225,16 +230,16 @@ languages.
 | Redis pub/sub or lists | External service; pub/sub loses signals, lists keep duplicates |
 | etcd / Consul watches | Raft clusters; far heavier than the problem |
 | OS named events (`EventWaitHandle`) | One machine only |
-| Distributed lock libraries | Locks and semaphores, not events |
+| Distributed lock libraries | Locks and semaphores, not signals |
 
 ## 11. Quality bar
 
 - **Tests.**
-  - The event state machine is a pure component with deterministic unit tests, covering
+  - Signal delivery is a pure component with deterministic unit tests, covering
     every rule in section 3 with a fake clock.
   - Protocol parsing and formatting have their own unit tests.
   - Loopback TCP integration tests cover connect, heartbeat loss, host restart (`Joined`),
-    leaving while busy (re-raise) and limits.
+    leaving while busy (hand on) and limits.
   - No fixed sleeps in tests; they wait for observed events.
 - **Performance targets** (measured by a separate benchmark program, not gating tests):
   - in-process set to wake under 50 µs;
@@ -242,4 +247,5 @@ languages.
   - at least 100 000 sets per second on one core, most of them coalesced;
   - memory grows with keys × groups + subscriptions only.
 - **Observability.** `System.Diagnostics.Metrics` counters: connections, subscriptions,
-  sets, coalesced sets, deliveries, re-raises. Log lines for connect and disconnect.
+  sets, coalesced sets, deliveries, signals handed on. Log lines for connect and
+  disconnect.

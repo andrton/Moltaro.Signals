@@ -1,8 +1,8 @@
 # Moltaro.Signals
 
-Remote auto-reset events for .NET. An embeddable in-memory host and a TCP client: `Set` is
-idempotent per key, one waiter per group wakes, and liveness is visible at once. Made for
-the case where a message broker is used only as a wake-up doorbell.
+Remote wake-up signals for .NET. An embeddable in-memory host and a TCP client: `Set` is
+idempotent per key, one waiter per group on a key wakes, and liveness is visible at once.
+Made for the case where a message broker is used only as a wake-up doorbell.
 
 ## Status
 
@@ -14,11 +14,12 @@ library up to its first release, is under way in [current work](docs/work/README
 ## What it is, and what it is not
 
 Background workers usually keep their work in a database and only need a nudge: "something
-new is there, look now". This library gives that nudge as the state of an auto-reset
-event, not as a message:
+new is there, look now". This library gives that nudge as a signal that is either pending
+or taken, not as a message:
 
-- twenty sets of a raised event are one set;
-- one set wakes exactly one waiting member of a group, and every group gets its own;
+- twenty sets while a signal is pending are one set;
+- one set wakes exactly one waiting member of a group on a key, and every group gets its
+  own;
 - a set that arrives while a member is working is waiting for it when it comes back;
 - a member that dies mid-work hands the signal on;
 - after a reconnect every member does one full pass, so the host can restart freely;

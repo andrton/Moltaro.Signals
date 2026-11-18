@@ -141,10 +141,10 @@ public sealed class SignalClient : ISignals, IAsyncDisposable
     }
 
     /// <summary>
-    /// Sets the event of a key and of each of its ancestors on the host, for every (key, group) among these keys that
-    /// has members there.
+    /// Sets a key and each of its ancestors on the host, for every (key, group) among these keys that has members
+    /// there.
     /// </summary>
-    /// <param name="key">The key whose event is set; a name, as the remarks of <see cref="ISignals"/> define it.</param>
+    /// <param name="key">The key that is set; a name, as the remarks of <see cref="ISignals"/> define it.</param>
     /// <param name="cancellationToken">
     /// Ends the wait for the host's answer. A token that is already cancelled gives a cancelled task, and nothing is
     /// sent.

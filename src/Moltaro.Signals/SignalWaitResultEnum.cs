@@ -15,7 +15,7 @@ public enum SignalWaitResultEnum
     Joined = 1,
 
     /// <summary>
-    /// A signal was handed to the member, or its wait found the group's event raised and reset it.
+    /// A signal was handed to the member, or its wait found one pending and took it.
     /// </summary>
     Signaled = 2,
 

@@ -1,8 +1,8 @@
 namespace Moltaro.Signals.Protocol;
 
 // The rules of names and of the token, as the protocol fixes them, so that the host and its clients check the same
-// limits; the bound on the length of a line follows from them. It knows nothing of events or sockets. Plain comments,
-// not XML documentation, keep these internal rules out of the documentation file of the package.
+// limits; the bound on the length of a line follows from them. It knows nothing of signal delivery or sockets. Plain
+// comments, not XML documentation, keep these internal rules out of the documentation file of the package.
 internal static class ProtocolRules
 {
     internal const int MaxNameLength = 128;

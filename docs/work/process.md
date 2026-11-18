@@ -46,8 +46,8 @@ with one brief per sprint. A brief has to be enough for an agent that knows noth
 - **Goal** — one behavior, end to end, small enough for one agent and one review.
 - **Contract** — the public types and members the sprint adds or changes.
 - **To read** — the decisions and documents the sprint depends on, with their dates.
-- **Acceptance** — the behaviors the tests have to state. For a sprint on the event state
-  machine, the protocol codec or the transport also what is measured: a benchmark or an
+- **Acceptance** — the behaviors the tests have to state. For a sprint on signal
+  delivery, the protocol codec or the transport also what is measured: a benchmark or an
   allocation test.
 - **Out of scope** — what the sprint deliberately leaves alone.
 - **Track** — full, refactoring or light.
@@ -68,7 +68,7 @@ sprint never starts from a brief whose contract is not written out and approved:
 interface designed twenty sprints ahead would be changed anyway, and every change of a
 contract goes through the owner.
 
-For a sprint on a mechanism that has no public surface — the event state machine, the
+For a sprint on a mechanism that has no public surface — signal delivery, the
 protocol codec — the contract is the internal types its tests address; they are named in
 the brief and put into code in the same way.
 
@@ -257,7 +257,7 @@ many rounds it took.
 
 ## A study comes before a design
 
-A sprint that builds a mechanism of the library — the event state machine, the protocol
+A sprint that builds a mechanism of the library — signal delivery, the protocol
 and its codec, the transport, liveness and reconnection — begins with a study, before its internal contract is fixed and
 before any code (the owner's rule of 17 November 2026). The agent reads the source, not
 summaries, of two to four established systems that solve the same problem, at pinned
@@ -285,7 +285,7 @@ what was adapted and what was only taken as an idea.
   implementation, fixes; a refactoring sprint is its refactoring steps, then fixes. On the
   branch they are not squashed, so that "tests first" stays visible in the pull request;
   the merge squashes them into one commit of `main`.
-- The subject names the epic and the sprint: `Epic 1, sprint 3: tests for re-raising when a busy member leaves`.
+- The subject names the epic and the sprint: `Epic 1, sprint 3: tests for handing the signal on when a busy member leaves`.
 - No agent attribution lines, as `AGENTS.md` says.
 - Commits stay local. Nothing is pushed without the owner's instruction or standing
   permission.

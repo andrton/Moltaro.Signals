@@ -5,8 +5,8 @@ this project is built. Shared rules live here; `CLAUDE.md` only points to this f
 
 ## Project
 
-Moltaro.Signals is a small .NET library with one primitive: a **remote auto-reset event
-with consumer groups**. A host embedded in one process keeps the events in memory; clients
+Moltaro.Signals is a small .NET library with one primitive: **remote signals with consumer
+groups**. A host embedded in one process keeps the signals in memory; clients
 in other processes connect over one persistent TCP connection with a line-based text
 protocol; code inside the host process uses the same interface without a socket. A signal
 carries no data: it only says "look now", coalesces per key and group, and wakes one
@@ -38,7 +38,7 @@ The projects:
 | `src/Moltaro.Signals.Samples` | Runnable samples of intended use, including a standalone host of a few lines |
 | `src/*.Tests` | Tests, one project per library |
 | `src/Moltaro.Signals.TestSupport` | Code that two or more test projects need, as "Tests And Samples" says. Never shipped; no tests |
-| `src/Moltaro.Signals.Measurements` | Planned with the event state machine: the benchmark program of the concept's performance targets. Started by hand; never shipped and not a test project |
+| `src/Moltaro.Signals.Measurements` | Planned with signal delivery: the benchmark program of the concept's performance targets. Started by hand; never shipped and not a test project |
 
 The repository root holds only repository-level files. Code never lives there.
 
@@ -76,17 +76,17 @@ outside the primitive is declined, or noted as planned in the concept.
 1. **A signal is state, not a message.** It has no payload, no history and no
    persistence. Receivers read the facts from their own storage. Nothing in the library
    queues, orders or replays signals.
-2. **Set is idempotent and never waits for a connection.** Setting a raised event does
-   nothing. A client that is not connected answers `Unavailable` at once; it never blocks
+2. **Set is idempotent and never waits for a connection.** A set while a signal is
+   pending does nothing. A client that is not connected answers `Unavailable` at once; it never blocks
    and never queues a set for later. A connected client waits only for the host's answer,
    which carries the group count; that wait ends at the latest when a silent connection
    is declared dead.
 3. **The last set is never lost.** Every rule of delivery serves this guarantee: one
    waiting member of a group on a key receives a signal; a member is busy until its next
-   wait, and a set meanwhile raises the event; a member that leaves while busy re-raises
-   it; the first wait after subscribing or reconnecting returns `Joined`. A change that
+   wait, and a set meanwhile leaves a signal pending; a member that leaves while busy
+   hands its signal on; the first wait after subscribing or reconnecting returns `Joined`. A change that
    weakens any of these is a defect, whatever it gains.
-4. **The host may restart at any time.** All event state lives in the memory of the host;
+4. **The host may restart at any time.** All signal state lives in the memory of the host;
    correctness never depends on it surviving. `Joined` after a reconnect is what makes
    this safe.
 5. **Liveness is explicit.** Heartbeats detect a dead peer within a bounded time; the
@@ -109,8 +109,8 @@ outside the primitive is declined, or noted as planned in the concept.
 10. **Dependencies point one way.** `Moltaro.Signals` depends on nothing outside .NET.
     `Moltaro.Signals.Hosting` depends on it and on the hosting abstractions of .NET. Inside
     an assembly a folder is a namespace and one responsibility, and folders depend on each
-    other in one direction: the event state machine knows nothing of sockets, the protocol
-    codec nothing of events, the transport ties them together. Public types stay in the
+    other in one direction: signal delivery knows nothing of sockets, the protocol codec
+    nothing of signal delivery, the transport ties them together. Public types stay in the
     namespace the contract gives them.
 11. **Performance is a design goal, proven by measurement.** Avoid needless copies and
     allocations on the set and wake paths, but justify added complexity with a number from
@@ -123,7 +123,7 @@ row left to right: an earlier quality is not traded for a later one.
 
 | Zone | Priorities, in order |
 | --- | --- |
-| Event state machine | Correctness → latency and allocations → readability → flexibility |
+| Signal delivery | Correctness → latency and allocations → readability → flexibility |
 | Protocol codec and transport | Correctness → robustness under disconnects and bad input → latency → readability |
 | Public contract | Correctness → clarity of use → stability → speed |
 | Hosting integration, samples, tests | Readability → simplicity; speed does not matter |
@@ -191,7 +191,8 @@ Naming:
 - Private fields are `_camelCase`.
 - Name things for what they do for the user, not for the framework mechanism inside.
 - Words, as the concept defines them: *key*, *group*, *subscription* (one member of a
-  group on one connection), *event* (the state of one key and group), *host*, *client*.
+  group on one connection), *signal* ("look now", no data), *pending signal* (one that no
+  member of the group on that key has taken yet), *host*, *client*.
 
 Shape of the public API:
 
@@ -203,6 +204,8 @@ Shape of the public API:
   `NotSupportedException` marks what is not implemented.
 - Every public member has XML documentation: what it does, what it guarantees, what it
   does not, and which errors it reports. Plain sentences, no restating of the signature.
+  Internal members are commented with `//`, not `///`, so that the XML documentation of
+  a package holds only its public contract.
 
 Writing code:
 
@@ -219,16 +222,16 @@ Writing code:
 
 - A public behavior has a scenario test that reads like its use. A test name is a
   sentence stating the behavior.
-- Tests use the public API, with one exception that is a rule of this project: the event
-  state machine and the protocol codec have no public surface and are tested directly,
+- Tests use the public API, with one exception that is a rule of this project: signal
+  delivery and the protocol codec have no public surface and are tested directly,
   through `InternalsVisibleTo` for their test project. Each such test states a rule of the
   concept (section 3) or of `docs/protocol.md`, never how the code happens to be built.
-- Every rule of the concept's section 3 has a deterministic test of the state machine.
+- Every rule of the concept's section 3 has a deterministic test of signal delivery.
 - Time is injected through `TimeProvider`. Heartbeats, dead-peer detection, deadlines and
   backoff are tested with a fake clock.
 - A test waits for an observed event; it never sleeps and never polls with a delay.
 - Transport tests run over loopback TCP: connect, heartbeat loss, host restart (`Joined`),
-  leaving while busy (re-raise), bad input and limits.
+  leaving while busy (hand on), bad input and limits.
 - Code that two or more test projects need lives once, in a `Moltaro.Signals.TestSupport`
   project, created when the second test project needs it. It is never shipped and contains
   no tests.
