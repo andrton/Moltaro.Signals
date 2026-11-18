@@ -9,7 +9,7 @@ namespace Moltaro.Signals.Tests.HostOverTcp;
 public sealed class ConnectionEndTests
 {
     // One connection has an armed member, which the dispose does not answer; the other has none.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Disposing_the_host_closes_every_connection_with_nothing_more_written_and_frees_its_port()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -29,7 +29,7 @@ public sealed class ConnectionEndTests
         Assert.Null(await idle.ReadLineAsync(cancellationToken));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_busy_member_whose_client_closes_the_connection_hands_its_signal_to_an_in_process_member_that_waits()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -48,7 +48,7 @@ public sealed class ConnectionEndTests
 
     // The ERR line comes first; then the host removes the members of the connection, the busy one on jobs handing its
     // signal on, before it closes the connection. Once the client has read the end, the member on mail is gone.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_members_of_a_connection_refused_with_protocol_are_removed_before_it_is_closed()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

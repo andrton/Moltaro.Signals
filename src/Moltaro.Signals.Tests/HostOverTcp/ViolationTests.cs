@@ -24,7 +24,7 @@ public sealed class ViolationTests
         $"HELLO 2 {LoopbackOptions.Token}\r\n",
     ];
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [MemberData(nameof(BrokenLines))]
     public async Task A_line_that_breaks_the_grammar_after_HELLO_closes_the_connection_with_protocol(string text)
     {
@@ -39,7 +39,7 @@ public sealed class ViolationTests
     }
 
     // The first line of a connection is its HELLO; a PING in its place is no exception.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_line_before_HELLO_closes_the_connection_with_protocol()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -52,7 +52,7 @@ public sealed class ViolationTests
         Assert.Null(await connection.ReadLineAsync(cancellationToken));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_SUB_for_a_sid_that_is_open_closes_the_connection_with_protocol()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -67,7 +67,7 @@ public sealed class ViolationTests
     }
 
     // The first WAIT ends the busy state of the new member and arms it; nothing is pending, so it stays armed.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_WAIT_for_an_armed_member_closes_the_connection_with_protocol()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

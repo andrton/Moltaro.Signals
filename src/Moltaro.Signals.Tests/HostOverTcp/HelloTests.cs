@@ -9,7 +9,7 @@ public sealed class HelloTests
     // Not the default, so that a deadline the host did not take from its options shows.
     private static readonly TimeSpan DeadPeerTimeout = TimeSpan.FromSeconds(5);
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_HELLO_of_version_1_with_the_token_of_the_host_is_answered_with_OK_0()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -21,7 +21,7 @@ public sealed class HelloTests
         Assert.Equal("OK 0", await connection.ReadLineAsync(cancellationToken));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_HELLO_of_another_version_is_refused_with_version()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -35,7 +35,7 @@ public sealed class HelloTests
     }
 
     // The token is compared exactly: a part of it, more than it, or another case is another token.
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [InlineData("test-toke")]
     [InlineData("test-tokenx")]
     [InlineData("TEST-TOKEN")]
@@ -53,7 +53,7 @@ public sealed class HelloTests
 
     // The client beyond the limit sends nothing before it reads: the host answers it before reading its HELLO, and a
     // HELLO the host had received but not read could turn the close into a reset that discards the ERR line.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_connection_beyond_MaxConnections_is_answered_with_connections_at_once()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -68,7 +68,7 @@ public sealed class HelloTests
 
     // The deadline of the HELLO counts from the accept. Here and in the next test the only timer of the host is that of
     // the one connection.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_HELLO_just_before_DeadPeerTimeout_after_the_accept_is_answered_with_OK_0()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -83,7 +83,7 @@ public sealed class HelloTests
         Assert.Equal("OK 0", await connection.ReadLineAsync(cancellationToken));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_connection_that_sends_no_HELLO_within_DeadPeerTimeout_is_refused_with_protocol()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

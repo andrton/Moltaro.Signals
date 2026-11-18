@@ -7,7 +7,7 @@ namespace Moltaro.Signals.Tests.HostOverTcp;
 // the next line of that connection, because that code is blocked until the answer has been read.
 public sealed class CompletionTests
 {
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_host_answers_the_next_line_of_a_connection_while_the_member_its_SET_woke_is_still_blocked()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

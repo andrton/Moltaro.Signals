@@ -1,6 +1,5 @@
 using System.Text;
 using Moltaro.Signals.Protocol;
-using Moltaro.Signals.TestSupport;
 
 namespace Moltaro.Signals.Tests.Protocol;
 
@@ -8,7 +7,7 @@ namespace Moltaro.Signals.Tests.Protocol;
 // \r\n, into a destination with room for the longest line, 282 characters and its \r\n.
 public sealed class LineFormatterTests
 {
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void OK_0_OK_sid_and_OK_rid_groups_are_written()
     {
         Assert.Equal("OK 0\r\n", Written(destination => LineFormatter.Ok(destination, 0)));
@@ -20,7 +19,7 @@ public sealed class LineFormatterTests
             Written(destination => LineFormatter.Ok(destination, long.MaxValue, int.MaxValue)));
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [InlineData(0L, "version")]
     [InlineData(0L, "token")]
     [InlineData(0L, "connections")]
@@ -35,14 +34,14 @@ public sealed class LineFormatterTests
         Assert.Equal($"ERR {id} {code} The host refuses.\r\n", line);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void SIG_and_PONG_are_written()
     {
         Assert.Equal("SIG 1\r\n", Written(destination => LineFormatter.Signal(destination, 1)));
         Assert.Equal("PONG\r\n", Written(LineFormatter.Pong));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void The_lines_of_a_client_are_written()
     {
         Assert.Equal("HELLO 1 s3cret\r\n", Written(destination => LineFormatter.Hello(destination, "s3cret")));
@@ -55,7 +54,7 @@ public sealed class LineFormatterTests
     }
 
     // The longest SUB, of 281 characters, is the longest line either side writes.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void The_longest_lines_fit_the_room_of_the_longest_line()
     {
         string name = new('n', 128);

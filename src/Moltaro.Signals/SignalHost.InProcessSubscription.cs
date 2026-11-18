@@ -119,6 +119,7 @@ public sealed partial class SignalHost
                 {
                     _disposed = true;
                     outcome = _host._delivery.Close(this);
+                    AnswerIfRemote(outcome.Receiver);
                     waiter = _waiter;
                 }
             }
@@ -148,23 +149,6 @@ public sealed partial class SignalHost
         internal void FailWait(Exception error)
         {
             _waiter!.TrySetException(error);
-        }
-
-        // The due time of a timer for a deadline, rounded up to whole milliseconds, because a timer counts whole
-        // milliseconds and would otherwise fire before the deadline. Zero when the deadline has come; null when it is
-        // further away than the longest timer, where it counts as none.
-        private static TimeSpan? TimeUntil(DateTimeOffset deadline, DateTimeOffset now)
-        {
-            long ticks = (deadline - now).Ticks;
-
-            if (ticks <= 0)
-            {
-                return TimeSpan.Zero;
-            }
-
-            TimeSpan due = TimeSpan.FromMilliseconds((ticks + TimeSpan.TicksPerMillisecond - 1) / TimeSpan.TicksPerMillisecond);
-
-            return due <= SignalChecks.LongestTimer ? due : null;
         }
 
         // Registers the cancellation after Arm and outside the lock, because a token that is already cancelled runs the

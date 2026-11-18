@@ -27,7 +27,7 @@ public sealed class ConnectionsInstrumentTests : IDisposable
 
     // A connection that has not sent its HELLO is not counted: were it counted, the total would not come back to 0
     // while it stays open.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Connections_counts_a_connection_from_its_accepted_HELLO_until_its_socket_is_closed()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

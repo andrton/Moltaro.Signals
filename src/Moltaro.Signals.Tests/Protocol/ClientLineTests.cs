@@ -1,6 +1,5 @@
 using System.Text;
 using Moltaro.Signals.Protocol;
-using Moltaro.Signals.TestSupport;
 
 namespace Moltaro.Signals.Tests.Protocol;
 
@@ -90,7 +89,7 @@ public sealed class ClientLineTests
         new string('t', 256),
     ];
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void HELLO_of_version_1_is_read_with_its_token()
     {
         ClientLine line = ClientLine.Read("HELLO 1 s3cret\r\n"u8);
@@ -101,7 +100,7 @@ public sealed class ClientLineTests
         Assert.Equal("s3cret", Encoding.ASCII.GetString(line.Token));
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [MemberData(nameof(Tokens))]
     public void A_token_of_1_to_256_characters_from_U0021_to_U007E_is_read(string token)
     {
@@ -111,7 +110,7 @@ public sealed class ClientLineTests
         Assert.Equal(token, Encoding.ASCII.GetString(line.Token));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void SUB_is_read_with_its_sid_key_and_group()
     {
         ClientLine line = ClientLine.Read("SUB 1 jobs workers\r\n"u8);
@@ -125,7 +124,7 @@ public sealed class ClientLineTests
     }
 
     // The longest line a client sends that the host accepts: 281 characters.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void The_longest_SUB_is_read_with_a_sid_of_2_63_minus_1_and_names_of_128_characters()
     {
         string key = new('k', 128);
@@ -140,7 +139,7 @@ public sealed class ClientLineTests
         Assert.Equal(group, Encoding.ASCII.GetString(line.Group));
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [InlineData("WAIT")]
     [InlineData("UNWAIT")]
     [InlineData("UNSUB")]
@@ -156,7 +155,7 @@ public sealed class ClientLineTests
         Assert.Equal(7, line.Id);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void SET_is_read_with_its_rid_and_key()
     {
         ClientLine line = ClientLine.Read("SET 2 jobs.mail\r\n"u8);
@@ -168,7 +167,7 @@ public sealed class ClientLineTests
         Assert.Equal("jobs.mail", Encoding.ASCII.GetString(line.Key));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void PING_is_read()
     {
         ClientLine line = ClientLine.Read("PING\r\n"u8);
@@ -178,7 +177,7 @@ public sealed class ClientLineTests
         Assert.Equal(ClientVerbEnum.Ping, line.Verb);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void Only_the_first_line_of_the_buffer_is_read()
     {
         ClientLine line = ClientLine.Read("WAIT 1\r\nPI"u8);
@@ -189,7 +188,7 @@ public sealed class ClientLineTests
         Assert.Equal(1, line.Id);
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [MemberData(nameof(IncompleteLines))]
     public void A_buffer_with_no_line_end_and_fewer_than_284_bytes_is_incomplete(string text)
     {
@@ -198,7 +197,7 @@ public sealed class ClientLineTests
         Assert.Equal(LineStatusEnum.Incomplete, line.Status);
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [MemberData(nameof(LinesRefusedWithProtocol))]
     public void A_line_that_breaks_the_grammar_is_refused_with_protocol_and_a_reason(string text)
     {
@@ -209,7 +208,7 @@ public sealed class ClientLineTests
         AssertIsText(line.Reason);
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [MemberData(nameof(LinesRefusedWithVersion))]
     public void A_HELLO_of_another_version_is_refused_with_version_and_a_reason(string text)
     {
@@ -221,7 +220,7 @@ public sealed class ClientLineTests
     }
 
     // The reason is the <text> of the host's ERR line, which never repeats what the client sent.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void The_reason_of_a_refusal_is_a_fixed_sentence_that_never_repeats_the_line()
     {
         string? first = ClientLine.Read("SET 2 secret..one\r\n"u8).Reason;

@@ -9,7 +9,7 @@ public sealed class LivenessTests
     // Not the default, so that a deadline the host did not take from its options shows.
     private static readonly TimeSpan DeadPeerTimeout = TimeSpan.FromSeconds(5);
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_PING_is_answered_with_PONG()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -24,7 +24,7 @@ public sealed class LivenessTests
     // The silence is counted from the last line the host received: two PINGs, each just before DeadPeerTimeout after
     // the line before it, keep the connection open past DeadPeerTimeout after its HELLO. The only timer of the host is
     // that of the one connection.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_connection_silent_for_DeadPeerTimeout_after_its_last_line_is_closed_with_nothing_written()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

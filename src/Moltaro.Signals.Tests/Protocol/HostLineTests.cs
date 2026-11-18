@@ -1,6 +1,5 @@
 using System.Text;
 using Moltaro.Signals.Protocol;
-using Moltaro.Signals.TestSupport;
 
 namespace Moltaro.Signals.Tests.Protocol;
 
@@ -64,7 +63,7 @@ public sealed class HostLineTests
         new string('x', 128),
     ];
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [InlineData("OK 0\r\n", 0L)]
     [InlineData("OK 7\r\n", 7L)]
     [InlineData("OK 9223372036854775807\r\n", long.MaxValue)]
@@ -79,7 +78,7 @@ public sealed class HostLineTests
         Assert.Null(line.Groups);
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [InlineData("0", 0)]
     [InlineData("1", 1)]
     [InlineData("2147483647", int.MaxValue)]
@@ -93,7 +92,7 @@ public sealed class HostLineTests
         Assert.Equal(groups, line.Groups);
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [InlineData("version")]
     [InlineData("token")]
     [InlineData("connections")]
@@ -110,7 +109,7 @@ public sealed class HostLineTests
         Assert.Null(line.Groups);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void ERR_sid_subscriptions_is_read_with_its_sid_and_text()
     {
         HostLine line = HostLine.Read("ERR 3 subscriptions Too many subscriptions.\r\n"u8);
@@ -122,7 +121,7 @@ public sealed class HostLineTests
         Assert.Equal("Too many subscriptions.", Encoding.ASCII.GetString(line.Text));
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [MemberData(nameof(Texts))]
     public void A_text_of_1_to_128_characters_with_spaces_is_read_to_the_end_of_the_line(string text)
     {
@@ -132,7 +131,7 @@ public sealed class HostLineTests
         Assert.Equal(text, Encoding.ASCII.GetString(line.Text));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void SIG_is_read_with_its_sid()
     {
         HostLine line = HostLine.Read("SIG 1\r\n"u8);
@@ -143,7 +142,7 @@ public sealed class HostLineTests
         Assert.Equal(1, line.Id);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void PONG_is_read()
     {
         HostLine line = HostLine.Read("PONG\r\n"u8);
@@ -153,7 +152,7 @@ public sealed class HostLineTests
         Assert.Equal(HostVerbEnum.Pong, line.Verb);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void Only_the_first_line_of_the_buffer_is_read()
     {
         HostLine line = HostLine.Read("SIG 1\r\nPO"u8);
@@ -163,7 +162,7 @@ public sealed class HostLineTests
         Assert.Equal(HostVerbEnum.Sig, line.Verb);
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [MemberData(nameof(IncompleteLines))]
     public void A_buffer_with_no_line_end_and_fewer_than_284_bytes_is_incomplete(string text)
     {
@@ -172,7 +171,7 @@ public sealed class HostLineTests
         Assert.Equal(LineStatusEnum.Incomplete, line.Status);
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [MemberData(nameof(LinesRefusedWithProtocol))]
     public void A_line_that_breaks_the_grammar_is_refused_with_protocol_and_a_reason(string text)
     {
