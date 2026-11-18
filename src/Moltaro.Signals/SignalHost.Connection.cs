@@ -339,7 +339,10 @@ public sealed partial class SignalHost
 
         private bool HandleHello(ReadOnlySpan<byte> token)
         {
-            bool accepted = CryptographicOperations.FixedTimeEquals(token, _host._token);
+            if (!CryptographicOperations.FixedTimeEquals(token, _host._token))
+            {
+                return Refuse(ProtocolErrorEnum.Token, OtherToken);
+            }
 
             lock (_host._lock)
             {
@@ -348,22 +351,8 @@ public sealed partial class SignalHost
                     return false;
                 }
 
-                if (!accepted)
-                {
-                    BeginRefusal(ProtocolErrorEnum.Token, OtherToken);
-                }
-                else
-                {
-                    _helloAccepted = true;
-                    Write(LineFormatter.Ok(LineSpace(), 0));
-                }
-            }
-
-            if (!accepted)
-            {
-                _ = FinishEndAsync(refused: true);
-
-                return false;
+                _helloAccepted = true;
+                Write(LineFormatter.Ok(LineSpace(), 0));
             }
 
             _host._connections.Add(1);
