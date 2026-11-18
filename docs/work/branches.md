@@ -24,7 +24,7 @@ as it closes instead of waiting for the whole epic.
 | Branch | Cut from | For | Lives | Merged by |
 | --- | --- | --- | --- | --- |
 | `main` | — | The integrated, green state; the source of every release | Always | — |
-| `epic-<n>/sprint-<nn>-<name>` | `main` | One sprint of an epic, on the full track | Until the sprint closes | Pull request, squash |
+| `epic-<n>/sprint-<nn>-<name>` | `main` | One sprint of an epic, on the full or the refactoring track | Until the sprint closes | Pull request, squash |
 | `fix/<name>`, `docs/<name>`, `chore/<name>` | `main` | The light track: a fix, a document, repository upkeep | A day or two | Pull request, squash |
 
 Examples: `epic-1/sprint-03-protocol-codec`, `fix/heartbeat-timeout`,
@@ -102,6 +102,10 @@ only documents: a required check that does not run would block the pull request.
   The [Publish](../../.github/workflows/publish.yml) workflow builds, tests and packs that
   commit and pushes the packages to nuget.org; it refuses a tag that is not on `main`.
   There is no stored API key: the workflow signs in through nuget.org Trusted Publishing.
+- **Before the first release tag** the owner re-activates the nuget.org Trusted Publishing
+  policy "Moltaro.Signals". Until a package has been published through it, the policy is
+  active only for a limited time, so it may have lapsed since it was created, and the
+  sign-in of the workflow would then fail.
 - **A release tag is permanent.** The ruleset in
   [`.github/rulesets/release-tags.json`](../../.github/rulesets/release-tags.json) refuses
   moving or deleting a `v*` tag. A wrong release is followed by a new version, never by a
@@ -161,10 +165,11 @@ repository only on a paid plan. While the repository is private on a free plan, 
 hold by this document and by [AGENTS.md](../../AGENTS.md).
 
 **Publishing to nuget.org.** Once, before the first release, the owner signs in to
-nuget.org and adds a policy under **Trusted Publishing**: repository owner `andrton`,
-repository `Moltaro.Signals`, workflow file `publish.yml`, no environment. The workflow
-then gets a short-lived key for each run; no API key is created or stored. Renaming the
-workflow file or the repository breaks publishing until the policy is changed to match.
+nuget.org and adds a policy named "Moltaro.Signals" under **Trusted Publishing**:
+repository owner `andrton`, repository `Moltaro.Signals`, workflow file `publish.yml`, no
+environment. The workflow then gets a short-lived key for each run; no API key is
+created or stored. Renaming the workflow file or the repository breaks publishing until
+the policy is changed to match.
 
 ## The first commits
 
