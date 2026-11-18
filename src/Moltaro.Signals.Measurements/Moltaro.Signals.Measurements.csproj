@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The measurements of the performance targets, started by hand; never run by CI or the test lane, never shipped. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Moltaro.Signals\Moltaro.Signals.csproj" />
+  </ItemGroup>
+
+</Project>

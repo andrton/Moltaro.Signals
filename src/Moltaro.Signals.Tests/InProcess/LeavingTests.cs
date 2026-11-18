@@ -24,7 +24,7 @@ public sealed class LeavingTests
     }
 
     [Fact(Skip = SkipReason.NotImplemented)]
-    public async Task A_busy_member_that_leaves_raises_the_event_for_a_busy_member_of_its_group()
+    public async Task A_busy_member_that_leaves_hands_its_signal_on_as_pending_for_a_busy_member_of_its_group()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
         await using var host = new SignalHost(LoopbackOptions.Host());

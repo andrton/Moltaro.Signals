@@ -33,8 +33,8 @@ public sealed class WaitTests
         Assert.Equal(SignalWaitResultEnum.Joined, result);
     }
 
-    // After the deadline the member holds no signal: a set raises its event instead of handing the signal to the
-    // wait that has ended.
+    // After the deadline the member holds no signal: a set leaves a signal pending instead of handing it to the wait
+    // that has ended.
     [Fact(Skip = SkipReason.NotImplemented)]
     public async Task A_wait_returns_DeadlineReached_when_its_deadline_comes_first()
     {
@@ -64,7 +64,7 @@ public sealed class WaitTests
         Assert.Equal(SignalWaitResultEnum.Signaled, await lane.WaitAsync(until: null, cancellationToken));
     }
 
-    // The raised event is left as it was: the next wait finds it.
+    // The pending signal is left as it was: the next wait takes it.
     [Fact(Skip = SkipReason.NotImplemented)]
     public async Task A_wait_whose_deadline_has_passed_returns_DeadlineReached_at_once_and_changes_nothing()
     {
@@ -101,7 +101,7 @@ public sealed class WaitTests
         Assert.Equal(SignalWaitResultEnum.Signaled, await wait);
     }
 
-    // After the cancellation the member holds no signal: a set raises its event instead of handing the signal to the
+    // After the cancellation the member holds no signal: a set leaves a signal pending instead of handing it to the
     // wait that has ended.
     [Fact(Skip = SkipReason.NotImplemented)]
     public async Task A_cancelled_wait_ends_with_OperationCanceledException()
@@ -138,7 +138,7 @@ public sealed class WaitTests
         Assert.Equal(SignalWaitResultEnum.Signaled, await wait);
     }
 
-    // The raised event is left as it was: the next wait finds it.
+    // The pending signal is left as it was: the next wait takes it.
     [Fact(Skip = SkipReason.NotImplemented)]
     public async Task A_wait_with_a_token_already_cancelled_ends_cancelled_and_changes_nothing()
     {
