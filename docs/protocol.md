@@ -17,14 +17,14 @@ a change of it is a change of the protocol version, which `HELLO` carries.
 
 | Field | Form |
 | --- | --- |
-| `<sid>`, `<rid>` | 1 to 19 digits, no leading zero, at most 2^63−1. The client takes the numbers of subscriptions and of requests from one counter per connection and never uses a number twice on it. It never sends `0` |
-| `0` | The connection itself: the request that `OK 0` and `ERR 0` answer is the connection's `HELLO`, or the connection as a whole |
-| `<version>` | The same form as an id. This document is version `1` |
+| `<sid>`, `<rid>` | 1 to 19 digits, no leading zero, from 1 to 2^63−1; a `0` in a client line is a violation. The client takes the numbers of subscriptions and of requests from one counter per connection and never uses a number twice on it |
+| `0` | The connection itself: the request that `OK 0` and `ERR 0` answer is the connection's `HELLO`, or the connection as a whole. The host writes `0` only in `OK 0` and in `ERR 0 <code>` for `version`, `token`, `connections` and `protocol`; a host line with id `0` in any other form, or `ERR <sid>` with one of those four codes, breaks the grammar |
+| `<version>` | The same form as an id, so `HELLO 0 <token>` is a violation, not `version`. This document is version `1` |
 | `<token>` | 1 to 256 characters from U+0021 to U+007E |
 | `<key>`, `<group>` | A name: 1 to 128 characters from `A–Z a–z 0–9 . _ : -`, where `.` separates segments and no segment is empty |
 | `<groups>` | `0` or 1 to 10 digits with no leading zero, at most 2^31−1 |
 | `<code>` | `version`, `token`, `connections`, `protocol` or `subscriptions` |
-| `<text>` | 1 to 128 characters, spaces allowed, to the end of the line: a fixed sentence for a person, which never repeats what the client sent |
+| `<text>` | 1 to 128 characters, spaces allowed inside but not at its start or end, to the end of the line: a fixed sentence for a person, which never repeats what the client sent |
 
 A correct client has at most one unanswered `SUB` or `UNWAIT` per `<sid>`, and the host
 sends `SIG <sid>` only to an armed member, so each answer names one request.

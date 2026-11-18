@@ -1462,6 +1462,10 @@ approval of this plan, with PQ2 and PQ3 answered.
   - The documents step adds `UNWAIT` to concept §6 as the owner answered PQ3, row d. The
     standalone host sample runs; `README.md` says the host listens and which protocol it
     speaks, and lists the instrument `connections`.
+- **Small changes made on this branch** (`process.md`, "Small changes during a sprint"):
+  two clarifications of the grammar of `docs/protocol.md`, from the tests step of S3 (the
+  coordinator): a `0` is not an id of a client line, and the host writes it only in
+  `OK 0` and in `ERR 0` with a connection code; `<text>` has no space at its start or end.
 - **Out of scope.** `SignalClient`; reconnection; explanations.
 
 ### S4 · Refactoring
