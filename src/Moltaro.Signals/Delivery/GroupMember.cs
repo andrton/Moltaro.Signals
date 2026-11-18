@@ -15,4 +15,15 @@ internal class GroupMember
     // SignalDelivery.Close leaves it. The host reads a member's NextWoken before it completes that member's wait: once
     // completed, the member may wait and be woken again, which relinks it.
     internal GroupMember? NextWoken { get; set; }
+
+    // The group on the key that the member belongs to while it is open; null before it is opened and after it was
+    // closed. This and the two links below are fields of signal delivery, not of its contract: only SignalDelivery and
+    // KeyGroup use them.
+    internal KeyGroup? KeyGroup { get; set; }
+
+    // The neighbours of the member in the queue of the waiting members of its KeyGroup; null when it stands first or
+    // last, and when it does not wait.
+    internal GroupMember? PreviousWaiting { get; set; }
+
+    internal GroupMember? NextWaiting { get; set; }
 }

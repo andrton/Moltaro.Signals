@@ -37,7 +37,7 @@ public sealed class NameRuleTests
         Assert.Throws<ArgumentException>("key", () => host.Subscribe(name, "workers"));
     }
 
-    [Theory(Skip = SkipReason.NotImplemented)]
+    [Theory]
     [MemberData(nameof(GoodNames))]
     public async Task A_name_that_keeps_the_rule_is_accepted_as_a_key_and_as_a_group(string name)
     {

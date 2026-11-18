@@ -7,7 +7,7 @@ namespace Moltaro.Signals.Tests.InProcess;
 // OperationCanceledException only when no signal was handed to it, so cancelling one shows that it received none.
 public sealed class SetTests
 {
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_set_hands_the_signal_to_one_waiting_member_of_each_group()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -36,7 +36,7 @@ public sealed class SetTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => other);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_set_returns_Applied_with_the_number_of_groups_that_have_members_on_its_key()
     {
         await using var host = new SignalHost(LoopbackOptions.Host());
@@ -51,7 +51,7 @@ public sealed class SetTests
         Assert.Equal(2, result.Groups);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_set_that_nobody_listens_to_returns_zero_groups_and_is_not_remembered()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -72,7 +72,7 @@ public sealed class SetTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await wait);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_set_while_a_member_is_busy_makes_its_next_wait_return_Signaled()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -86,7 +86,7 @@ public sealed class SetTests
         Assert.Equal(SignalWaitResultEnum.Signaled, await lane.WaitAsync(until: null, cancellationToken));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Sets_while_a_member_is_busy_give_it_one_pass_and_no_more()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -108,7 +108,7 @@ public sealed class SetTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await wait);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_set_with_a_token_already_cancelled_ends_cancelled_and_sets_nothing()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -127,7 +127,7 @@ public sealed class SetTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await wait);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Keys_and_groups_are_compared_exactly_case_included()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

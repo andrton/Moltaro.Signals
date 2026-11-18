@@ -1,5 +1,4 @@
 using Moltaro.Signals.Delivery;
-using Moltaro.Signals.TestSupport;
 
 namespace Moltaro.Signals.Tests.Delivery;
 
@@ -8,7 +7,7 @@ namespace Moltaro.Signals.Tests.Delivery;
 // it are decided, so a deadline and a cancellation are the same call here.
 public sealed class EndOfWaitTests
 {
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void A_wait_ended_before_a_set_holds_no_signal_and_the_set_leaves_one_pending()
     {
         var delivery = new SignalDelivery();
@@ -25,7 +24,7 @@ public sealed class EndOfWaitTests
     }
 
     // The signal stays with the member, so leaving hands it on (rule 7).
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void A_wait_ended_after_a_set_keeps_the_signal_it_was_handed()
     {
         var delivery = new SignalDelivery();

@@ -7,7 +7,7 @@ namespace Moltaro.Signals.Tests.InProcess;
 // cancelled ends with OperationCanceledException only when no signal was handed to it.
 public sealed class LeavingTests
 {
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_busy_member_that_leaves_hands_its_signal_to_a_waiting_member_of_its_group()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -23,7 +23,7 @@ public sealed class LeavingTests
         Assert.Equal(SignalWaitResultEnum.Signaled, await wait);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_busy_member_that_leaves_hands_its_signal_on_as_pending_for_a_busy_member_of_its_group()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -38,7 +38,7 @@ public sealed class LeavingTests
         Assert.Equal(SignalWaitResultEnum.Signaled, await staying.WaitAsync(until: null, cancellationToken));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_waiting_member_that_leaves_ends_its_wait_with_ObjectDisposedException_and_hands_nothing_on()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -61,7 +61,7 @@ public sealed class LeavingTests
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () => await stayingWait);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Disposing_a_member_again_does_nothing()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

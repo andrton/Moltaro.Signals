@@ -12,6 +12,13 @@ namespace Moltaro.Signals;
 /// </remarks>
 public readonly record struct SignalSetResult
 {
+    // The one way to a result that claims a success; only the library creates one.
+    internal SignalSetResult(SignalSetStatusEnum status, int groups)
+    {
+        Status = status;
+        Groups = groups;
+    }
+
     /// <summary>
     /// <see cref="SignalSetStatusEnum.Applied"/> when the host applied the set,
     /// <see cref="SignalSetStatusEnum.Unavailable"/> when the host did not confirm it, as

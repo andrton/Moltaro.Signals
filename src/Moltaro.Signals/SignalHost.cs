@@ -1,4 +1,6 @@
+using System.Diagnostics.Metrics;
 using System.Net;
+using Moltaro.Signals.Delivery;
 
 namespace Moltaro.Signals;
 
@@ -17,7 +19,7 @@ namespace Moltaro.Signals;
 /// that <see cref="ISignals"/> describes.
 /// </para>
 /// </remarks>
-public sealed class SignalHost : ISignals, IAsyncDisposable
+public sealed partial class SignalHost : ISignals, IAsyncDisposable
 {
     /// <summary>
     /// The name of the <see cref="System.Diagnostics.Metrics.Meter"/> of every host, for a listener such as
@@ -57,6 +59,30 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     /// </remarks>
     public const string MeterName = "Moltaro.Signals";
 
+    // The one lock of the host. It guards _delivery, the change of _disposed, and the wait fields of every
+    // subscription. Under it the host runs no code of the application except, for deadlines, TimeProvider.CreateTimer
+    // and ITimer.Change: the due time is at least 1 ms, so a TimeProvider does not call back inside them, and the
+    // timer's own lock is taken inside this one, never the other way round. Waits are completed, measurements recorded
+    // and cancellations registered after it is released.
+    private readonly Lock _lock = new();
+
+    private readonly SignalDelivery _delivery = new();
+
+    private readonly TimeProvider _timeProvider;
+
+    private readonly Meter _meter;
+
+    private readonly UpDownCounter<long> _subscriptions;
+
+    private readonly Counter<long> _sets;
+
+    private readonly Counter<long> _coalesced;
+
+    private readonly Counter<long> _deliveries;
+
+    private readonly Counter<long> _handedOn;
+
+    // Written under _lock; State reads it without the lock.
     private volatile bool _disposed;
 
     /// <summary>
@@ -99,6 +125,15 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
         {
             throw new ArgumentException("The time provider is required.", nameof(SignalHostOptions.TimeProvider));
         }
+
+        _timeProvider = options.TimeProvider;
+
+        _meter = new Meter(new MeterOptions(MeterName) { Scope = this });
+        _subscriptions = _meter.CreateUpDownCounter<long>("moltaro.signals.subscriptions", "{subscription}");
+        _sets = _meter.CreateCounter<long>("moltaro.signals.sets", "{set}");
+        _coalesced = _meter.CreateCounter<long>("moltaro.signals.coalesced", "{signal}");
+        _deliveries = _meter.CreateCounter<long>("moltaro.signals.deliveries", "{signal}");
+        _handedOn = _meter.CreateCounter<long>("moltaro.signals.handed_on", "{signal}");
     }
 
     /// <summary>
@@ -115,7 +150,8 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     /// <see cref="SignalConnectionStateEnum.Connected"/> from the constructor until <see cref="DisposeAsync"/>, and
     /// <see cref="SignalConnectionStateEnum.Disconnected"/> afterwards.
     /// </summary>
-    public SignalConnectionStateEnum State => SignalConnectionStateEnum.Disconnected;
+    public SignalConnectionStateEnum State =>
+        _disposed ? SignalConnectionStateEnum.Disconnected : SignalConnectionStateEnum.Connected;
 
     /// <summary>
     /// Never raised: the in-process <see cref="ISignals"/> of a host is connected for as long as the host lives.
@@ -179,9 +215,30 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     public ValueTask<SignalSetResult> SetAsync(string key, CancellationToken cancellationToken = default)
     {
         SignalChecks.CheckName(key, nameof(key));
-        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        throw new NotSupportedException();
+        SetOutcome outcome;
+
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return ValueTask.FromCanceled<SignalSetResult>(cancellationToken);
+            }
+
+            outcome = _delivery.Set(key);
+        }
+
+        Deliver(outcome.FirstWoken);
+        _sets.Add(1);
+
+        if (outcome.Coalesced > 0)
+        {
+            _coalesced.Add(outcome.Coalesced);
+        }
+
+        return new ValueTask<SignalSetResult>(new SignalSetResult(SignalSetStatusEnum.Applied, outcome.Groups));
     }
 
     /// <summary>
@@ -207,9 +264,19 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     {
         SignalChecks.CheckName(key, nameof(key));
         SignalChecks.CheckName(group, nameof(group));
-        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        throw new NotSupportedException();
+        var subscription = new InProcessSubscription(this);
+
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+
+            _delivery.Open(subscription, key, group);
+        }
+
+        _subscriptions.Add(1);
+
+        return subscription;
     }
 
     /// <summary>
@@ -230,8 +297,70 @@ public sealed class SignalHost : ISignals, IAsyncDisposable
     /// </remarks>
     public ValueTask DisposeAsync()
     {
-        _disposed = true;
+        GroupMember? firstWaited;
+
+        lock (_lock)
+        {
+            // The in-process side ends at once, so a second call finds it ended and has nothing to wait for.
+            if (_disposed)
+            {
+                return ValueTask.CompletedTask;
+            }
+
+            _disposed = true;
+            firstWaited = _delivery.CloseAll();
+        }
+
+        for (GroupMember? member = firstWaited; member is not null;)
+        {
+            GroupMember? next = member.NextWoken;
+
+            ((InProcessSubscription)member).FailWait(new ObjectDisposedException(GetType().FullName));
+            member = next;
+        }
+
+        _meter.Dispose();
 
         return ValueTask.CompletedTask;
+    }
+
+    // After the lock: completes the waits of the members that a set woke, and counts them as deliveries.
+    private void Deliver(GroupMember? firstWoken)
+    {
+        int delivered = 0;
+
+        for (GroupMember? member = firstWoken; member is not null;)
+        {
+            // Read before the wait is completed: once completed, the member may wait and be woken again, which
+            // relinks it.
+            GroupMember? next = member.NextWoken;
+
+            ((InProcessSubscription)member).CompleteWait(SignalWaitResultEnum.Signaled);
+            delivered++;
+            member = next;
+        }
+
+        if (delivered > 0)
+        {
+            _deliveries.Add(delivered);
+        }
+    }
+
+    // After the lock: finishes the close of an open member. A signal it handed on to a waiting member completes that
+    // member's wait.
+    private void FinishClose(CloseOutcome outcome)
+    {
+        _subscriptions.Add(-1);
+
+        if (outcome.Receiver is not null)
+        {
+            ((InProcessSubscription)outcome.Receiver).CompleteWait(SignalWaitResultEnum.Signaled);
+            _deliveries.Add(1);
+        }
+
+        if (outcome.Receiver is not null || outcome.Pending)
+        {
+            _handedOn.Add(1);
+        }
     }
 }

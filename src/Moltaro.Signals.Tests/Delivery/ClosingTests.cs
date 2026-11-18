@@ -1,5 +1,4 @@
 using Moltaro.Signals.Delivery;
-using Moltaro.Signals.TestSupport;
 
 namespace Moltaro.Signals.Tests.Delivery;
 
@@ -10,7 +9,7 @@ public sealed class ClosingTests
     private static readonly CloseOutcome NothingHandedOn = new(Receiver: null, Pending: false);
 
     // A set afterwards finds the member that stays still waiting, and does not hand the signal to the one that left.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void A_member_that_leaves_while_idle_or_waiting_hands_nothing_on()
     {
         var delivery = new SignalDelivery();
@@ -32,7 +31,7 @@ public sealed class ClosingTests
         Assert.Same(staying, Assert.Single(outcome.FirstWoken.ToChain()));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void The_last_member_of_a_group_on_a_key_that_leaves_hands_nothing_on_and_nothing_is_kept()
     {
         var delivery = new SignalDelivery();
@@ -57,7 +56,7 @@ public sealed class ClosingTests
         Assert.False(delivery.Arm(joined));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void Closing_a_closed_member_does_nothing()
     {
         var delivery = new SignalDelivery();
@@ -74,7 +73,7 @@ public sealed class ClosingTests
         Assert.False(delivery.Arm(staying));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public void Closing_every_member_names_those_that_waited_and_keeps_nothing()
     {
         var delivery = new SignalDelivery();

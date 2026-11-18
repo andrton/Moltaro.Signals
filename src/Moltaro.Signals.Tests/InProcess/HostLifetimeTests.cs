@@ -5,7 +5,7 @@ namespace Moltaro.Signals.Tests.InProcess;
 // The State of the in-process ISignals of a host and the end of its in-process side when the host is disposed.
 public sealed class HostLifetimeTests
 {
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_host_is_Connected_from_its_construction_until_it_is_disposed()
     {
         var host = new SignalHost(LoopbackOptions.Host());
@@ -17,7 +17,7 @@ public sealed class HostLifetimeTests
         Assert.Equal(SignalConnectionStateEnum.Disconnected, host.State);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Disposing_the_host_ends_its_pending_waits_and_refuses_later_calls()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

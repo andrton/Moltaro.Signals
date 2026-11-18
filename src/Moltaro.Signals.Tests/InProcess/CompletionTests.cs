@@ -8,7 +8,7 @@ namespace Moltaro.Signals.Tests.InProcess;
 // the set has returned.
 public sealed class CompletionTests
 {
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_set_that_wakes_a_member_returns_while_the_code_after_its_wait_is_still_blocked()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

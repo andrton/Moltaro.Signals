@@ -26,7 +26,7 @@ public sealed class MetricsTests : IDisposable
         _listener.Dispose();
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_host_publishes_its_instruments_with_their_kinds_and_units_on_a_meter_of_its_own()
     {
         await using var host = new SignalHost(LoopbackOptions.Host());
@@ -45,7 +45,7 @@ public sealed class MetricsTests : IDisposable
         Assert.Equal("{signal}", Published(HandedOn).Unit);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Subscriptions_counts_the_subscriptions_that_are_open()
     {
         await using var host = new SignalHost(LoopbackOptions.Host());
@@ -63,7 +63,7 @@ public sealed class MetricsTests : IDisposable
 
     // Both members are busy, so the first set leaves a signal pending on the key and on its ancestor, and the second
     // finds one pending on each. A set that nobody listens to is applied as well.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Sets_counts_each_applied_set_once_and_coalesced_each_key_and_group_that_found_a_signal_pending()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -84,7 +84,7 @@ public sealed class MetricsTests : IDisposable
 
     // A signal is delivered when a set wakes a waiting member, when a wait takes a pending signal, and when a busy
     // member that leaves hands its signal to a waiting member. Joined is no delivery.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Deliveries_counts_each_signal_handed_to_a_member_and_no_Joined()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -118,7 +118,7 @@ public sealed class MetricsTests : IDisposable
     // One busy member hands its signal to the member that waits, another leaves it pending where one is pending
     // already, which counts as no coalesced set; neither counts as a set. An idle member, and the last member of its
     // group on a key, hand nothing on.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Handed_on_counts_each_signal_a_busy_member_hands_on_to_the_members_that_stay()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

@@ -6,7 +6,7 @@ namespace Moltaro.Signals.Tests.InProcess;
 // WaitAsync in the contract), through the in-process ISignals of a host.
 public sealed class WaitTests
 {
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_first_wait_after_subscribing_returns_Joined()
     {
         await using var host = new SignalHost(LoopbackOptions.Host());
@@ -17,7 +17,7 @@ public sealed class WaitTests
         Assert.Equal(SignalWaitResultEnum.Joined, result);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_first_wait_returns_Joined_even_when_its_deadline_has_passed()
     {
         var clock = new FakeClock();
@@ -35,7 +35,7 @@ public sealed class WaitTests
 
     // After the deadline the member holds no signal: a set leaves a signal pending instead of handing it to the wait
     // that has ended.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_wait_returns_DeadlineReached_when_its_deadline_comes_first()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -65,7 +65,7 @@ public sealed class WaitTests
     }
 
     // The pending signal is left as it was: the next wait takes it.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_wait_whose_deadline_has_passed_returns_DeadlineReached_at_once_and_changes_nothing()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -84,7 +84,7 @@ public sealed class WaitTests
     }
 
     // A TimeProvider refuses a timer longer than its longest one, so a deadline taken as one would fail the wait.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_deadline_further_away_than_the_longest_timer_counts_as_none()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -101,9 +101,35 @@ public sealed class WaitTests
         Assert.Equal(SignalWaitResultEnum.Signaled, await wait);
     }
 
+    // A deadline belongs to the wait it was given to. The later wait has no token, so a wait the deadline ended would
+    // have completed inside Advance, which fires the clock's timers before it returns.
+    [Fact]
+    public async Task The_deadline_of_an_earlier_wait_does_not_end_a_later_wait()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        var clock = new FakeClock();
+        SignalHostOptions options = LoopbackOptions.Host();
+        options.TimeProvider = clock;
+        await using var host = new SignalHost(options);
+        using ISignalSubscription lane = host.Subscribe("jobs", "workers");
+        await lane.WaitAsync(until: null, cancellationToken);
+        ValueTask<SignalWaitResultEnum> earlier = lane.WaitAsync(clock.GetUtcNow().AddSeconds(5), cancellationToken);
+        await host.SetAsync("jobs", cancellationToken);
+        await earlier;
+
+        ValueTask<SignalWaitResultEnum> later = lane.WaitAsync(until: null, CancellationToken.None);
+        clock.Advance(TimeSpan.FromSeconds(5));
+
+        Assert.False(later.IsCompleted);
+
+        await host.SetAsync("jobs", cancellationToken);
+
+        Assert.Equal(SignalWaitResultEnum.Signaled, await later);
+    }
+
     // After the cancellation the member holds no signal: a set leaves a signal pending instead of handing it to the
     // wait that has ended.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_cancelled_wait_ends_with_OperationCanceledException()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -122,7 +148,7 @@ public sealed class WaitTests
         Assert.Equal(SignalWaitResultEnum.Signaled, await lane.WaitAsync(until: null, cancellationToken));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_wait_that_was_handed_a_signal_before_its_cancellation_returns_Signaled()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -139,7 +165,7 @@ public sealed class WaitTests
     }
 
     // The pending signal is left as it was: the next wait takes it.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_wait_with_a_token_already_cancelled_ends_cancelled_and_changes_nothing()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -154,7 +180,7 @@ public sealed class WaitTests
         Assert.Equal(SignalWaitResultEnum.Signaled, await lane.WaitAsync(until: null, cancellationToken));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_second_wait_while_one_is_pending_is_refused_and_leaves_the_first_alone()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
