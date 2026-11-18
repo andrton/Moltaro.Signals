@@ -8,12 +8,18 @@ internal class GroupMember
     // internal to the assembly because C# has no access level for a folder.
     internal GroupMemberStateEnum State { get; set; }
 
-    // The next member of the chain an outcome names: the chain of SetOutcome.FirstWoken, or the one
-    // SignalDelivery.CloseAll returns. A chain ends with null.
+    // The next member of a chain: the chain of SetOutcome.FirstWoken, the one SignalDelivery.CloseAll returns, or a
+    // chain of in-process members that the host links under its lock. A chain ends with null.
     //
-    // Only SignalDelivery.Set and SignalDelivery.CloseAll write it, for the members they take out of Waiting;
-    // SignalDelivery.Close leaves it. The host reads a member's NextWoken before it completes that member's wait: once
-    // completed, the member may wait and be woken again, which relinks it.
+    // SignalDelivery.Set and SignalDelivery.CloseAll write it, for the members they take out of Waiting;
+    // SignalDelivery.Close leaves it. The host writes it too, under its lock: it walks a chain there, answers the
+    // remote members with their SIG, and relinks the in-process members into a chain of their own, which it completes
+    // after the lock. The first chain is not walked after the lock: a remote member answered under the lock can be
+    // woken again on another connection before that walk reaches it, which relinks it, and the walk would skip the
+    // members behind it.
+    //
+    // The host reads a member's NextWoken before it completes that member's wait: once completed, the member may wait
+    // and be woken again, which relinks it.
     internal GroupMember? NextWoken { get; set; }
 
     // The group on the key that the member belongs to while it is open; null before it is opened and after it was

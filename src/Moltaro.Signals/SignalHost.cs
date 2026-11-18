@@ -1,6 +1,9 @@
 using System.Diagnostics.Metrics;
 using System.Net;
+using System.Net.Sockets;
+using System.Text;
 using Moltaro.Signals.Delivery;
+using Moltaro.Signals.Protocol;
 
 namespace Moltaro.Signals;
 
@@ -59,18 +62,38 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     /// </remarks>
     public const string MeterName = "Moltaro.Signals";
 
-    // The one lock of the host. It guards _delivery, the change of _disposal, and the wait fields of every
-    // subscription. Under it the host runs no code of the application except, for deadlines, TimeProvider.CreateTimer
-    // and ITimer.Change: the due time is at least 1 ms, so a TimeProvider does not call back inside them, and the
-    // timer's own lock is taken inside this one, never the other way round. Waits are completed, measurements recorded
-    // and cancellations registered after it is released.
+    // The one lock of the host. It guards _delivery, the change of _disposal and of _listener, the wait fields of every
+    // subscription, _openConnections, and of every connection its members, its pending output, its flush and the state
+    // of its end. Under it the host runs no code of the application except, for deadlines and connections,
+    // TimeProvider.CreateTimer and ITimer.Change, with a positive due time, so a TimeProvider does not call back inside
+    // them, and the timer's own lock is taken inside this one, never the other way round. Under it the host also
+    // appends a line to the output of a connection, in the section that decided it, and starts the flush of that output
+    // on the thread pool, which runs nothing inline; the send itself stays outside. Waits are completed, measurements
+    // recorded, cancellations registered and sockets closed after it is released.
     private readonly Lock _lock = new();
 
     private readonly SignalDelivery _delivery = new();
 
     private readonly TimeProvider _timeProvider;
 
+    private readonly IPEndPoint _listenEndPoint;
+
+    // The ASCII bytes of the token, which every HELLO is compared with.
+    private readonly byte[] _token;
+
+    private readonly int _maxConnections;
+
+    private readonly int _maxSubscriptionsPerConnection;
+
+    private readonly TimeSpan _deadPeerTimeout;
+
+    // The connections from their accept until their socket is closed: the count of MaxConnections, and the
+    // connections that DisposeAsync closes.
+    private readonly HashSet<Connection> _openConnections = [];
+
     private readonly Meter _meter;
+
+    private readonly UpDownCounter<long> _connections;
 
     private readonly UpDownCounter<long> _subscriptions;
 
@@ -82,9 +105,19 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
 
     private readonly Counter<long> _handedOn;
 
-    // Null until the host is disposed. The first DisposeAsync creates it under _lock and completes it once it has ended
-    // the in-process side; a later call returns its task. State reads it without the lock.
+    // Null until the host is disposed. The first DisposeAsync creates it under _lock and completes it once it has closed
+    // the listener and every connection and ended the in-process side; a later call returns its task. State reads it
+    // without the lock.
     private volatile TaskCompletionSource? _disposal;
+
+    // The listening socket; null until Start. Start sets it under _lock, so that a host is started once.
+    private Socket? _listener;
+
+    // The loop that accepts connections, from Start until the listener is closed.
+    private Task? _accepting;
+
+    // The bound address, set by Start once the socket is bound; read without the lock.
+    private volatile IPEndPoint? _localEndPoint;
 
     /// <summary>
     /// Creates a host with its signal delivery in memory. Its in-process <see cref="ISignals"/> works from here on,
@@ -128,8 +161,14 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
         }
 
         _timeProvider = options.TimeProvider;
+        _listenEndPoint = new IPEndPoint(options.ListenEndPoint.Address, options.ListenEndPoint.Port);
+        _token = Encoding.ASCII.GetBytes(options.Token!);
+        _maxConnections = options.MaxConnections;
+        _maxSubscriptionsPerConnection = options.MaxSubscriptionsPerConnection;
+        _deadPeerTimeout = options.DeadPeerTimeout;
 
         _meter = new Meter(new MeterOptions(MeterName) { Scope = this });
+        _connections = _meter.CreateUpDownCounter<long>("moltaro.signals.connections", "{connection}");
         _subscriptions = _meter.CreateUpDownCounter<long>("moltaro.signals.subscriptions", "{subscription}");
         _sets = _meter.CreateCounter<long>("moltaro.signals.sets", "{set}");
         _coalesced = _meter.CreateCounter<long>("moltaro.signals.coalesced", "{signal}");
@@ -145,7 +184,7 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     /// When <see cref="SignalHostOptions.ListenEndPoint"/> asked for port 0, it reports the port the system chose. It
     /// does not change after <see cref="Start"/>. Tests and samples connect clients to it.
     /// </remarks>
-    public IPEndPoint? LocalEndPoint => null;
+    public IPEndPoint? LocalEndPoint => _localEndPoint;
 
     /// <summary>
     /// <see cref="SignalConnectionStateEnum.Connected"/> from the constructor until <see cref="DisposeAsync"/>, and
@@ -178,7 +217,44 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     /// <exception cref="ObjectDisposedException">The host was disposed.</exception>
     public void Start()
     {
-        throw new NotSupportedException();
+        var listener = new Socket(_listenEndPoint.AddressFamily, SocketType.Stream, ProtocolType.Tcp);
+        bool disposed;
+        bool started;
+
+        lock (_lock)
+        {
+            disposed = _disposal is not null;
+            started = _listener is not null;
+
+            if (!disposed && !started)
+            {
+                _listener = listener;
+            }
+        }
+
+        if (disposed || started)
+        {
+            listener.Dispose();
+        }
+
+        ObjectDisposedException.ThrowIf(disposed, this);
+
+        if (started)
+        {
+            throw new InvalidOperationException("The host was started before.");
+        }
+
+        // A socket that fails to bind stays the host's listener, so a later Start is refused and DisposeAsync closes it.
+        listener.Bind(_listenEndPoint);
+        listener.Listen();
+        _localEndPoint = (IPEndPoint)listener.LocalEndPoint!;
+
+        // The loop outlives the call, so it does not capture the execution context of the caller; nor does anything it
+        // starts for its connections. It runs on the thread pool, never on the caller's thread or synchronization
+        // context, so Start returns once the socket is bound, even when accept fails at once and keeps failing.
+        using AsyncFlowControl? flow = ExecutionContext.IsFlowSuppressed() ? null : ExecutionContext.SuppressFlow();
+
+        _accepting = Task.Run(() => AcceptAsync(listener));
     }
 
     /// <summary>
@@ -218,6 +294,8 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
         SignalChecks.CheckName(key, nameof(key));
 
         SetOutcome outcome;
+        GroupMember? firstInProcess;
+        int woken;
 
         lock (_lock)
         {
@@ -229,15 +307,10 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
             }
 
             outcome = _delivery.Set(key);
+            firstInProcess = AnswerRemoteMembers(outcome.FirstWoken, out woken);
         }
 
-        Deliver(outcome.FirstWoken);
-        _sets.Add(1);
-
-        if (outcome.Coalesced > 0)
-        {
-            _coalesced.Add(outcome.Coalesced);
-        }
+        FinishSet(outcome, firstInProcess, woken);
 
         return new ValueTask<SignalSetResult>(new SignalSetResult(SignalSetStatusEnum.Applied, outcome.Groups));
     }
@@ -300,10 +373,14 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     {
         TaskCompletionSource disposal;
         GroupMember? firstWaited;
+        Socket? listener;
+        Connection[] connections;
+        bool[] endBegun;
 
         lock (_lock)
         {
-            // A later call waits for the first, which may still be ending the waits or disposing the meter.
+            // A later call waits for the first, which may still be closing connections, ending the waits or disposing
+            // the meter.
             if (_disposal is not null)
             {
                 return new ValueTask(_disposal.Task);
@@ -312,18 +389,294 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
             disposal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             _disposal = disposal;
             firstWaited = _delivery.CloseAll();
+            listener = _listener;
+            connections = [.. _openConnections];
+            endBegun = new bool[connections.Length];
+
+            // From here every connection takes no more lines and no more output, so no line reaches a member that
+            // CloseAll removed. The host writes nothing more on any of them.
+            for (int index = 0; index < connections.Length; index++)
+            {
+                endBegun[index] = connections[index].BeginEnd(refusal: null, text: null);
+            }
         }
 
+        listener?.Dispose();
+
+        // A connection whose end began before has its socket closed, which ends a wait of that end for its flush.
+        for (int index = 0; index < connections.Length; index++)
+        {
+            if (endBegun[index])
+            {
+                _ = connections[index].FinishEndAsync(refused: false);
+            }
+            else
+            {
+                connections[index].CloseSocket();
+            }
+        }
+
+        // Nothing is done for the remote members in the chain: their connections are closed anyway.
         for (GroupMember? member = firstWaited; member is not null;)
         {
             GroupMember? next = member.NextWoken;
 
-            ((InProcessSubscription)member).FailWait(new ObjectDisposedException(GetType().FullName));
+            if (member is InProcessSubscription subscription)
+            {
+                subscription.FailWait(new ObjectDisposedException(GetType().FullName));
+            }
+
             member = next;
         }
 
-        // Disposing the meter runs the MeasurementsCompleted callbacks of the application's listeners, which may throw:
-        // the first call then reports that exception, and the later calls complete all the same.
+        var closing = new Task[connections.Length + 1];
+        closing[0] = _accepting ?? Task.CompletedTask;
+
+        for (int index = 0; index < connections.Length; index++)
+        {
+            closing[index + 1] = connections[index].Ended;
+        }
+
+        Task closed = Task.WhenAll(closing);
+
+        // A host that was never started has nothing to wait for, so its dispose completes in the call.
+        if (closed.IsCompleted)
+        {
+            FinishDispose(disposal);
+
+            return new ValueTask(disposal.Task);
+        }
+
+        return new ValueTask(FinishDisposeAsync(closed, disposal));
+    }
+
+    // Under the lock: answers the remote members of the chain a set woke with their SIG, in the section that woke them,
+    // and relinks the in-process members into a chain of their own, which FinishSet completes after the lock. The
+    // chain of the set is not walked after the lock: a remote member answered here can be woken again on another
+    // connection before that walk would reach it, which relinks it, and the walk would skip the members behind it.
+    // Returns the first in-process member, null when none was woken, and in woken the number of members woken.
+    private static GroupMember? AnswerRemoteMembers(GroupMember? firstWoken, out int woken)
+    {
+        GroupMember? firstInProcess = null;
+        GroupMember? lastInProcess = null;
+        woken = 0;
+
+        for (GroupMember? member = firstWoken; member is not null;)
+        {
+            GroupMember? next = member.NextWoken;
+
+            // Unlinked, so that a remote member keeps no member that followed it reachable, nor that member's connection
+            // once it is closed.
+            member.NextWoken = null;
+            woken++;
+
+            if (member is RemoteMember remote)
+            {
+                remote.Signal();
+            }
+            else
+            {
+                if (lastInProcess is null)
+                {
+                    firstInProcess = member;
+                }
+                else
+                {
+                    lastInProcess.NextWoken = member;
+                }
+
+                lastInProcess = member;
+            }
+
+            member = next;
+        }
+
+        return firstInProcess;
+    }
+
+    // Under the lock: a remote member that receives the signal of a member that left gets its SIG in the section that
+    // handed it on.
+    private static void AnswerIfRemote(GroupMember? receiver)
+    {
+        if (receiver is RemoteMember remote)
+        {
+            remote.Signal();
+        }
+    }
+
+    // The due time of a timer for a deadline, rounded up to whole milliseconds, because a timer counts whole
+    // milliseconds and would otherwise fire before the deadline. Zero when the deadline has come; null when it is
+    // further away than the longest timer, where it counts as none.
+    private static TimeSpan? TimeUntil(DateTimeOffset deadline, DateTimeOffset now)
+    {
+        long ticks = (deadline - now).Ticks;
+
+        if (ticks <= 0)
+        {
+            return TimeSpan.Zero;
+        }
+
+        TimeSpan due = TimeSpan.FromMilliseconds((ticks + TimeSpan.TicksPerMillisecond - 1) / TimeSpan.TicksPerMillisecond);
+
+        return due <= SignalChecks.LongestTimer ? due : null;
+    }
+
+    // After the lock: answers a connection beyond MaxConnections with ERR 0 connections in one synchronous send, which
+    // does not wait, because the send buffer of a socket just accepted is empty, and closes it. It has no reader and no
+    // timer.
+    private static void TurnAway(Socket socket)
+    {
+        Span<byte> line = stackalloc byte[ProtocolRules.LineRoom];
+        int length = LineFormatter.Error(line, 0, ProtocolErrorEnum.Connections, "The host holds its limit of connections.");
+
+        try
+        {
+            socket.Send(line[..length]);
+            socket.Shutdown(SocketShutdown.Both);
+        }
+        catch (SocketException)
+        {
+            // The client has gone already; there is nobody to answer.
+        }
+
+        socket.Dispose();
+    }
+
+    // Accepts connections until DisposeAsync closes the listener. A connection is counted from here until its socket is
+    // closed; one beyond MaxConnections is turned away after the lock, and one accepted while the host is disposed is
+    // closed with nothing written.
+    private async Task AcceptAsync(Socket listener)
+    {
+        while (true)
+        {
+            Socket socket;
+
+            try
+            {
+                socket = await listener.AcceptAsync().ConfigureAwait(false);
+            }
+            catch (SocketException exception) when (exception.SocketErrorCode != SocketError.OperationAborted && _disposal is null)
+            {
+                // A connection that failed before the host took it in; the next one is accepted all the same. A
+                // persistent error, for example EMFILE, makes the loop retry at once.
+                continue;
+            }
+            catch (Exception exception) when (exception is SocketException or ObjectDisposedException)
+            {
+                // The listener was closed.
+                return;
+            }
+
+            try
+            {
+                // A line goes out at once, not held back to be sent together with later ones.
+                socket.NoDelay = true;
+            }
+            catch (SocketException)
+            {
+                // The client is gone already.
+                socket.Dispose();
+
+                continue;
+            }
+
+            // Read before the lock is taken, because the TimeProvider is code of the application.
+            DateTimeOffset acceptedAt = _timeProvider.GetUtcNow();
+            Connection? connection = null;
+            bool disposed;
+
+            lock (_lock)
+            {
+                disposed = _disposal is not null;
+
+                if (!disposed && _openConnections.Count < _maxConnections)
+                {
+                    connection = new Connection(this, socket, acceptedAt);
+                    _openConnections.Add(connection);
+                }
+            }
+
+            if (connection is not null)
+            {
+                connection.Start();
+            }
+            else if (disposed)
+            {
+                socket.Dispose();
+            }
+            else
+            {
+                TurnAway(socket);
+            }
+        }
+    }
+
+    // After the lock: completes the waits of the in-process members a set woke, chained by AnswerRemoteMembers, and
+    // records the set. Woken counts the remote members as well.
+    private void FinishSet(SetOutcome outcome, GroupMember? firstInProcess, int woken)
+    {
+        for (GroupMember? member = firstInProcess; member is not null;)
+        {
+            // Read before the wait is completed: once completed, the member may wait and be woken again, which
+            // relinks it.
+            GroupMember? next = member.NextWoken;
+
+            ((InProcessSubscription)member).CompleteWait(SignalWaitResultEnum.Signaled);
+            member = next;
+        }
+
+        _sets.Add(1);
+
+        if (outcome.Coalesced > 0)
+        {
+            _coalesced.Add(outcome.Coalesced);
+        }
+
+        if (woken > 0)
+        {
+            _deliveries.Add(woken);
+        }
+    }
+
+    // After the lock: finishes the close of an open member. A signal it handed on to a waiting in-process member
+    // completes that member's wait; a remote receiver got its SIG under the lock.
+    private void FinishClose(CloseOutcome outcome)
+    {
+        _subscriptions.Add(-1);
+
+        if (outcome.Receiver is InProcessSubscription receiver)
+        {
+            receiver.CompleteWait(SignalWaitResultEnum.Signaled);
+        }
+
+        if (outcome.Receiver is not null)
+        {
+            _deliveries.Add(1);
+        }
+
+        if (outcome.Receiver is not null || outcome.Pending)
+        {
+            _handedOn.Add(1);
+        }
+    }
+
+    // After the listener and every connection are closed. A failure of what it waited for still completes the dispose.
+    private async Task FinishDisposeAsync(Task closed, TaskCompletionSource disposal)
+    {
+        try
+        {
+            await closed.ConfigureAwait(false);
+        }
+        finally
+        {
+            FinishDispose(disposal);
+        }
+    }
+
+    // Disposing the meter runs the MeasurementsCompleted callbacks of the application's listeners, which may throw: the
+    // first call then reports that exception, and the later calls complete all the same.
+    private void FinishDispose(TaskCompletionSource disposal)
+    {
         try
         {
             _meter.Dispose();
@@ -331,48 +684,6 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
         finally
         {
             disposal.SetResult();
-        }
-
-        return new ValueTask(disposal.Task);
-    }
-
-    // After the lock: completes the waits of the members that a set woke, and counts them as deliveries.
-    private void Deliver(GroupMember? firstWoken)
-    {
-        int delivered = 0;
-
-        for (GroupMember? member = firstWoken; member is not null;)
-        {
-            // Read before the wait is completed: once completed, the member may wait and be woken again, which
-            // relinks it.
-            GroupMember? next = member.NextWoken;
-
-            ((InProcessSubscription)member).CompleteWait(SignalWaitResultEnum.Signaled);
-            delivered++;
-            member = next;
-        }
-
-        if (delivered > 0)
-        {
-            _deliveries.Add(delivered);
-        }
-    }
-
-    // After the lock: finishes the close of an open member. A signal it handed on to a waiting member completes that
-    // member's wait.
-    private void FinishClose(CloseOutcome outcome)
-    {
-        _subscriptions.Add(-1);
-
-        if (outcome.Receiver is not null)
-        {
-            ((InProcessSubscription)outcome.Receiver).CompleteWait(SignalWaitResultEnum.Signaled);
-            _deliveries.Add(1);
-        }
-
-        if (outcome.Receiver is not null || outcome.Pending)
-        {
-            _handedOn.Add(1);
         }
     }
 }

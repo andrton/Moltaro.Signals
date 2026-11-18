@@ -12,8 +12,9 @@ protocol; code inside the host process uses the same interface without a socket.
 carries no data: it only says "look now", coalesces per key and group, and wakes one
 waiting member of each group on each key it sets.
 
-What exists today is the **concept**, the **public contract** in code and the host inside
-its own process; the epic in [current work](docs/work/README.md) builds the rest. The
+What exists today is the **concept**, the **public contract** in code and the host, inside
+its own process and over TCP; the epic in [current work](docs/work/README.md) builds the
+rest. The
 [concept](docs/concept.md) is the authority for what the library guarantees: its
 semantics, its decisions D1–D15 and its non-goals. `README.md` says what works today; a
 feature is delivered when the README says so.
@@ -188,7 +189,9 @@ Naming:
 - Public types are named in the contract stage and reviewed as public API. A name that
   would be generic on its own (`SetResult`, `WaitResult`) takes the `Signal` prefix.
 - Every enum type ends with `Enum`.
-- Asynchronous methods end with `Async` and take a `CancellationToken` last.
+- Asynchronous methods end with `Async` and take a `CancellationToken` last, when a
+  caller awaits them; a private loop that ends when its socket or timer does, or a method
+  that completes a dispose, takes none.
 - Private fields are `_camelCase`.
 - Name things for what they do for the user, not for the framework mechanism inside.
 - Words, as the concept defines them: *key*, *group*, *subscription* (one member of a

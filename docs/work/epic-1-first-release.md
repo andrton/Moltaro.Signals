@@ -1,7 +1,7 @@
 # Epic 1: First release
 
 **Status:** the plan and its contract were approved by the owner on 18 November 2026 (O4);
-S1 and S2 are done; S3 is next.
+S1, S2 and S3 are done; S4, the refactoring sprint, is next.
 
 ## Goal
 
@@ -42,7 +42,7 @@ options state (decision O5).
 | O1 | **Standing permission for this epic.** The coordinator has, for this epic, the standing permission that [branches and releases](branches.md#who-does-what), "Who does what", describes, within the limits it names there |
 | O2 | **Few sprints, the contract first.** The library is small, so the epic is not split into many sprints. The plan comes first, and with it the contract: the whole public interface of both packages is written out exactly in this plan, every public type and member with its signature and what it guarantees, because it is meant to stay. Later it changes only in individual cases, through the owner. The plan therefore has one contract stage that covers the entire public surface, and a sprint is split only where one agent and one review could not carry it |
 | O3 | **Explanations in two forms.** The documentation that explains the architecture and how the library works, small as it is, is written both as Markdown and as HTML. In the main cases the HTML version is animated, so that a person can easily watch how it works. The rule this gives is in `AGENTS.md`, "Documentation"; requirement R15 names the explanations of this epic |
-| O4 | **Every contract is agreed with the owner before it is committed**: the public contract in this plan, any change of it, and the contract a sprint puts into code |
+| O4 | **Every contract is agreed with the owner before it is committed**: the public contract in this plan, any change of it, and the contract a sprint puts into code; narrowed by O12 |
 | O5 | **A refusal is one rule, and flood resistance is out of scope.** A refusal that closes is answered with the `ERR` line, then the connection is closed normally, with no closing phase, draining or bound beyond what the options state. Refusals raise no notification and write no log line. Resistance to denial of service beyond the stated limits is out of scope for v1, by D9 |
 | O6 | **Remove everything that is not needed.** No `Refused` state, no name-length option, no refusal exception, no host connection event, no refusal counter, no ordered sids, no allocation assertions, and the smaller cuts the contract below reflects |
 | O7 | **Hierarchical keys, ancestors only.** A key is a path of segments separated by `.`. A set of a key also sets each of its ancestors: a set of `entity.contacts.42` acts as a set of `entity.contacts.42`, `entity.contacts` and `entity`, each by rule 1, for every (key, group) among these keys that has members. No wildcards, no setting of descendants; anything more is a separate decision later |
@@ -50,6 +50,7 @@ options state (decision O5).
 | O9 | **Three contract wordings.** The rules act per (key, group); an attempt that ends without the host's answer to its `HELLO` raises no `StateChanged`; the client logs a refused attempt in its Warning line, with no Error line |
 | O10 | **O1 covers this epic's documents too.** The standing permission of O1 also covers the pull requests of this epic's documents — the plan, the contracts of later stages, light-track changes — once they are reviewed and, where the process asks for it, approved by the owner. It never covers the release change, which stays with the owner, or what O1 excludes |
 | O11 | **The one term is signal.** A set gives each group with members on a key a *signal*; one that no member has taken yet is *pending* (at most one per (key, group)); a busy member that leaves *hands its signal on*. "Event" for that state, "raised", "re-raise" and "auto-reset event" leave the documentation, the contract and the code |
+| O12 | **Narrows O4.** The owner agrees only the public contract before it is committed, and any change of it: the public API of both packages, the protocol (`docs/protocol.md`), the metric names and the log categories. Internal contracts — the types the tests address that are not public — are approved by the coordinator after the independent review. The owner arbitrates what the coordinator cannot settle and decides any change of a guarantee or a decision of the concept |
 
 ## Requirements
 
@@ -117,6 +118,9 @@ not committed. S6 moves the final figures into `README.md`.
 | S2 | Allocated per wait, without deadline or token / with both | 96 / 232 bytes | Reported | The same | 18 November 2026 |
 | S2 | Set of a key of one / three segments, members on one level | 181 / 328 ns, 0 bytes allocated | Reported | The same | 18 November 2026 |
 | S2 | Sets per second on 2 / 4 / 8 threads, in total | 3.3 / 2.4 / 2.8 million | Reported | The same | 18 November 2026 |
+| S3 | `SET` lines applied per second from one connection, pipelined over loopback | 0.73 million | Reported | The same | 18 November 2026 |
+| S3 | Allocated per `SET` over loopback | 0.7 bytes | Reported | The same | 18 November 2026 |
+| S3 | In-process set to wake, again on the build of S3 | p50 1.4 µs, p99 2.4 µs | p50 under 50 µs: met | The same | 18 November 2026 |
 
 Rates and latencies on one laptop with mixed core types vary between runs, by a factor of
 five in the review of S2; every judged target was met in every run. The allocation and
@@ -775,13 +779,13 @@ concept §6 and the contract above:
 | Client → host | `HELLO <protocol-version> <token>`, `SUB <sid> <key> <group>`, `WAIT <sid>`, `UNWAIT <sid>` ([PQ1](#pq1-ending-a-remote-wait), answered by the owner), `UNSUB <sid>`, `SET <rid> <key>`, `PING`. `<sid>` is a number the client chooses for a subscription, `<rid>` a request id |
 | Host → client | `OK <rid> [<groups>]` and `ERR <rid> <code> <text>` as replies, `SIG <sid>` and `PONG` |
 | Replies | Every reply names the request it answers; pushes are told apart by their verb. `HELLO`, `SUB`, `UNWAIT` and `SET` are answered; `WAIT` is answered only by a `SIG`; `PING` by `PONG` |
-| Subscription ids | A client never uses a `<sid>` twice on one connection: it takes them from a counter. The host ignores `UNSUB`, `WAIT` and `UNWAIT` for a `<sid>` that is not open, and the client ignores a `SIG` for a `<sid>` it has closed: the host handed that signal on when it removed the member |
+| Subscription ids | A client never uses a `<sid>` twice on one connection: it takes them from a counter. The host ignores `UNSUB`, `WAIT` and `UNWAIT` for a `<sid>` that is not open, so an `UNSUB` sent before its `SUB` is answered is safe, and the client ignores a `SIG` for a `<sid>` it has closed: the host handed that signal on when it removed the member |
 | Order | The first line is `HELLO`; nothing else is accepted before its `OK`, and a correct client sends nothing else, `PING` included, until its `HELLO` is answered. The host handles the lines of one connection in order, and writes what it sends on one connection in the order of what causes it, so a `SIG` written before an answer is read before it |
 | A member on the host | Busy once its `SUB` is answered (`Joined` counts as a signal, rule 6). `WAIT` arms it; `SIG` makes it busy; `UNWAIT` makes an armed member idle and leaves a busy one busy; `UNSUB` or the end of its connection removes it and, if it was busy, hands its signal on as a set of that one (key, group) does, without its ancestors (rules 1 and 7). A signal is never pending while a member of its group on that key waits |
 | Names, token | Names of 1 to 128 characters from `A–Z a–z 0–9 . _ : -`, with no empty segment between the `.`s; a token of 1 to 256 characters from U+0021 to U+007E; both limits fixed by the protocol. A `SET` of a key also sets its ancestors (O7); the line does not change. The line length bound follows from them |
 | Limits, as options | `MaxConnections`, `MaxSubscriptionsPerConnection`, `DeadPeerTimeout` of the host; `HeartbeatInterval`, `DeadPeerTimeout`, `ReconnectDelay`, `MaxReconnectDelay` of the client |
 | Liveness | The client sends `PING` when it has sent nothing, or received nothing, for `HeartbeatInterval`, and at most one `PING` in that time; the host answers `PONG`. Each side closes a connection on which it received nothing for its `DeadPeerTimeout` |
-| Refusals that close | For `version`, `token`, `connections` and `protocol` the host removes the connection's members, handing on the signals of busy ones (rule 7), writes the `ERR` line and closes the connection normally. After `version` or `token` the host has read the `HELLO` and a correct client has sent nothing more, so the client reads the `ERR`. A connection refused with `connections` is answered before its `HELLO` is read, so a reset can discard the `ERR`, and that client may see a plain end of the connection instead, which raises no `StateChanged`; either way it stays `Disconnected` and tries again with backoff. Resistance to floods of connections is out of scope (O5) |
+| Refusals that close | For `version`, `token`, `connections` and `protocol` the host writes the `ERR` line, after which the connection takes no more output; it removes the connection's members, handing on the signals of busy ones (rule 7), and closes the connection normally. After `version` or `token` the host has read the `HELLO` and a correct client has sent nothing more, so the client reads the `ERR`. A connection refused with `connections` is answered before its `HELLO` is read, so a reset can discard the `ERR`, and that client may see a plain end of the connection instead, which raises no `StateChanged`; either way it stays `Disconnected` and tries again with backoff. Resistance to floods of connections is out of scope (O5) |
 
 The error codes, all fixed now:
 
@@ -790,10 +794,10 @@ The error codes, all fixed now:
 | `version` | `HELLO` with a protocol version the host does not speak | Closed |
 | `token` | `HELLO` with another token | Closed |
 | `connections` | A connection accepted while `MaxConnections` connections are open. The host answers at once, before reading `HELLO` | Closed |
-| `protocol` | A line that breaks the grammar or is too long; a line before `HELLO`; a `SUB` for a `<sid>` that is open; a name that breaks the name rule; no `HELLO` within `DeadPeerTimeout` | Closed, with the text as the reason. A correct client never causes it |
+| `protocol` | A line that breaks the grammar or is too long; a line before `HELLO`; a `SUB` for a `<sid>` that is open; a `WAIT` for an armed member; a name that breaks the name rule; no `HELLO` within `DeadPeerTimeout` | Closed, with the text as the reason. A correct client never causes it |
 | `subscriptions` | A `SUB` beyond `MaxSubscriptionsPerConnection` | Stays open. The subscription's `WaitAsync` reports `InvalidOperationException` through its task |
 
-**What S3 fixes after its study**, in `docs/protocol.md`: the exact grammar of every line;
+**Fixed by S3 after its study**, in [`docs/protocol.md`](../protocol.md), version 1: the exact grammar of every line;
 the form and range of `<sid>` and `<rid>`; how the answers to `SUB` and `UNWAIT` name the
 request they answer; whether `UNSUB` is answered; what the `OK` of `HELLO` carries;
 the form of `<text>`; whether the host writes anything before it closes a silent
@@ -835,8 +839,9 @@ reason, and it goes to the owner as a change of the contract.
   requires, answering the questions their brief names. The internal types their tests
   address are then written into the brief by the planner, with what the study taught;
   an independent reviewer reviews them until no P1, P2 or P3 finding is left, and the
-  owner approves them before the contract step. The public contract these sprints
-  implement is not reopened by the study.
+  coordinator approves them before the contract step (O12). The owner sees them only when
+  the study shows that the public contract or the protocol has to change. The public
+  contract these sprints implement is not reopened by the study.
 - **Studies.** The implementer of the sprint carries out its study, before any code.
   Two to four established systems per study, read in their source at pinned
   commits, the licence checked first by the rule of the process; Redis is not opened
@@ -905,7 +910,7 @@ S1 contract ── S2 signal delivery, in-process ── S3 protocol, host over 
 | --- | --- | --- | --- |
 | S1 | The public contract, the projects and the test lane | Full | Done, 18 November 2026: 3 review rounds |
 | S2 | Signal delivery and the in-process host | Full | Done, 18 November 2026: internal contract approved by the owner after 4 review rounds; sprint review 3 rounds |
-| S3 | The protocol, its codec and the host over TCP | Full | Not started |
+| S3 | The protocol, its codec and the host over TCP | Full | Done, 18 November 2026: protocol and internal contract reviewed in 3 rounds and approved by the owner; sprint review 2 rounds |
 | S4 | Refactoring of the code base after S3 | Refactoring | Not started |
 | S5 | The remote client: liveness and reconnection | Full | Not started |
 | S6 | The hosting package, the samples and the first release | Full | Not started |
@@ -1231,31 +1236,204 @@ approval of this plan, with PQ2 and PQ3 answered.
     `DisposeAsync`, the instrument `connections`.
   - *The protocol:* `docs/protocol.md`, version 1, with `UNWAIT` as the owner answered
     PQ1, written and approved as [The protocol](#the-protocol) says.
-  - *Internal:* the codec, in its own folder and namespace (`Moltaro.Signals.Protocol` is
-    proposed), tested directly through `InternalsVisibleTo`. Its types are written into
-    this brief after the study. They have to be able to: parse one client line into a
-    command with its fields, or a refusal with its code; format every host line; parse
-    every host line and format every client line, which S5 uses. They know nothing of
-    signal delivery or sockets. The transport that ties the codec, the sockets and signal
-    delivery together (`Moltaro.Signals.Transport` is proposed) is tested through the
-    protocol, not through internal types. The contract author's work, with
-    `docs/protocol.md`, is shown to the owner and committed only after the owner approved
-    it (O4).
-- **Study.** Sources, for example: the client protocol parser and the handling of slow
-  consumers in the NATS server (Apache-2.0); the text protocol of memcached (BSD-3-Clause);
-  the socket transport of Kestrel and `System.IO.Pipelines` (MIT). Questions:
-  1. The exact grammar: separators, the case of verbs, numbers and their range, how the
-     answers to `SUB` and `UNWAIT` name their request, whether `UNSUB` is answered.
-  2. How the host reads lines with a bound on their length, without copying them, and
-     what a line costs in allocations.
-  3. How the host writes the replies and pushes of one connection in order while signals
-     come from other connections, and how writes are batched.
-  4. What the host holds for a client that does not read, and how it is bounded. If the
-     bound needs an option, that is a change of the public contract for the owner.
-  5. How a violation is answered and the connection closed, and how a silent connection
-     and a connection without `HELLO` are timed with `TimeProvider`.
-  6. How a connection is counted from its accept, and how one beyond `MaxConnections` is
-     answered with `connections` before the host reads its `HELLO`.
+  - *Internal:* the codec in the folder `src/Moltaro.Signals/Protocol`, namespace
+    `Moltaro.Signals.Protocol`, one type per file, tested directly through
+    `InternalsVisibleTo`. Written after the study, as
+    [Rules for every sprint](#rules-for-every-sprint) says. The contract author's work,
+    with `docs/protocol.md`, is shown to the owner and committed only after the owner
+    approved it (O4).
+
+    ```csharp
+    namespace Moltaro.Signals.Protocol;
+
+    internal static class ProtocolRules // gains, beside its members of S1:
+    {
+        internal const int Version = 1;
+
+        internal const int MaxIdLength = 19;
+
+        internal const int MaxTextLength = 128;
+
+        internal const int MaxLineLength = 282;
+    }
+
+    internal enum ProtocolErrorEnum { Version, Token, Connections, Protocol, Subscriptions }
+
+    internal enum LineStatusEnum { Incomplete, Complete, Refused }
+
+    internal enum ClientVerbEnum { Hello, Sub, Wait, Unwait, Unsub, Set, Ping }
+
+    internal enum HostVerbEnum { Ok, Err, Sig, Pong }
+
+    internal readonly ref struct ClientLine
+    {
+        internal static ClientLine Read(ReadOnlySpan<byte> buffer);
+
+        internal LineStatusEnum Status { get; }
+
+        internal int Length { get; }
+
+        internal ClientVerbEnum Verb { get; }
+
+        internal long Id { get; }
+
+        internal ReadOnlySpan<byte> Key { get; }
+
+        internal ReadOnlySpan<byte> Group { get; }
+
+        internal ReadOnlySpan<byte> Token { get; }
+
+        internal ProtocolErrorEnum Error { get; }
+
+        internal string? Reason { get; }
+    }
+
+    internal readonly ref struct HostLine
+    {
+        internal static HostLine Read(ReadOnlySpan<byte> buffer);
+
+        internal LineStatusEnum Status { get; }
+
+        internal int Length { get; }
+
+        internal HostVerbEnum Verb { get; }
+
+        internal long Id { get; }
+
+        internal int? Groups { get; }
+
+        internal ProtocolErrorEnum Error { get; }
+
+        internal ReadOnlySpan<byte> Text { get; }
+
+        internal string? Reason { get; }
+    }
+
+    internal static class LineFormatter
+    {
+        internal static int Ok(Span<byte> destination, long id);
+
+        internal static int Ok(Span<byte> destination, long rid, int groups);
+
+        internal static int Error(Span<byte> destination, long id, ProtocolErrorEnum code, string text);
+
+        internal static int Signal(Span<byte> destination, long sid);
+
+        internal static int Pong(Span<byte> destination);
+
+        internal static int Hello(Span<byte> destination, string token);
+
+        internal static int Sub(Span<byte> destination, long sid, string key, string group);
+
+        internal static int Wait(Span<byte> destination, long sid);
+
+        internal static int Unwait(Span<byte> destination, long sid);
+
+        internal static int Unsub(Span<byte> destination, long sid);
+
+        internal static int Set(Span<byte> destination, long rid, ReadOnlySpan<char> key);
+
+        internal static int Ping(Span<byte> destination);
+    }
+    ```
+
+    - **`ClientLine.Read(buffer)`**, used by the host, and **`HostLine.Read(buffer)`**,
+      used by the client in S5, read the first line of `buffer` where it lies, without
+      copying or allocating. `Incomplete` when it holds no `\n` yet and fewer than
+      `MaxLineLength` + 2 bytes; `Refused` with `Protocol` for a line that breaks the
+      grammar of `docs/protocol.md` or is too long, and with `Version` for a `HELLO` of
+      another version, `Reason` holding in both cases the fixed sentence the host writes
+      as `<text>`; otherwise `Complete`, with `Length` counting the
+      `\r\n`. Only the fields of the verb read are set; `Id` is `0` for `ERR 0` and
+      `OK 0`, and `Groups` is set only for the answer to a `SET`. `Read` checks a name by
+      widening its bytes onto the stack and calling `ProtocolRules.IsName`; the host widens
+      `Key` the same way for `SignalDelivery.Set`, and makes the two strings `Open` takes
+      for a `SUB`. What depends on the state of a connection — a line before
+      `HELLO`, a `SUB` for an open `<sid>`, a `WAIT` for an armed member, the limits, the
+      token — is the host's; so is answering `protocol` to a `Version` refusal of a line
+      after `HELLO`. The fixed sentences of those refusals live in the host's transport.
+    - **`LineFormatter`** writes one line with its `\r\n` into `destination`, which has
+      room for `MaxLineLength` + 2 bytes, and returns its length. It allocates nothing.
+      The code names the code word of `docs/protocol.md`; `text` is a fixed sentence of at
+      most `MaxTextLength` characters.
+    - The codec knows nothing of signal delivery or sockets.
+- **Study** (done, ideas only, `THIRD-PARTY-NOTICES.md` unchanged; the public contract and
+  the fixed tables of [The protocol](#the-protocol) are not reopened). Sources at pinned
+  commits: the NATS server v2.12.9 (`5919e2bb31ba21cd3f3da4f148f5f5cd44e1faf7`,
+  Apache-2.0); memcached 1.6.45 (`2d51e364799bc9698bd4b11728ea978cea12da6e`,
+  BSD-3-Clause); Kestrel of aspnetcore v10.0.0
+  (`7387de91234d3ef751fa50b3d1bfede4130213ff`) and `System.IO.Pipelines` of dotnet/runtime
+  v10.0.0 (`60629d14374c56f1cb51819049ad1fa529307f8d`), MIT. Decisions the implementer
+  and the test author share:
+  - **The grammar** is that of `docs/protocol.md`: one space between fields, verbs
+    case-sensitive, lines read where they lie. The id `0` names the connection, as the
+    request that `OK 0` and `ERR 0` answer; every `ERR 0` closes.
+  - **Where the transport lives.** In nested types of `SignalHost`, in the files
+    `SignalHost.Connection.cs` and `SignalHost.RemoteMember.cs`, as
+    `InProcessSubscription` is; this replaces the folder `Transport` the plan proposed,
+    which would depend on `SignalHost` while `SignalHost` depends on it (principle 10).
+    `RemoteMember` derives from `GroupMember`, one per open `<sid>`, and knows its
+    connection and its `<sid>`.
+  - **Reading.** One reader per connection owns its life: a fixed buffer of 4096 bytes,
+    lines read where they lie and only the incomplete tail moved to the front. It stores
+    the time of each receive, then handles each complete line in one section under the
+    host's lock, together with signal delivery, and appends the reply there. It receives
+    again only after the connection's output is sent, so a client that does not read
+    leaves the host holding the replies to one receive and at most one `SIG` per armed
+    member: a bound from the protocol and `MaxSubscriptionsPerConnection`, with no new
+    option.
+  - **Writing.** Each connection has two output buffers, one pending and one being sent,
+    under the host's lock. A line is appended inside the section that decided it, so the
+    output's order is the order of the decisions; a remote member gets its `SIG` in the
+    section that woke it, whether that is the walk of `Set`, a `Close` or the end of a
+    connection. From the section that ends it, a connection takes no more output; a
+    member woken meanwhile is `Busy` and hands its signal on when it is closed. A flush is started under the lock when
+    a line goes to a connection with no flush running; it runs on the thread pool, never
+    inline: it swaps the buffers under the lock, sends outside it, and ends under the lock
+    when nothing is pending. `NoDelay` is on.
+  - **Timers.** One `ITimer` per connection from its accept, re-armed as in S2. Before
+    `HELLO` its deadline is the accept plus `DeadPeerTimeout`, which gives
+    `ERR 0 protocol`; after it, the last receive plus `DeadPeerTimeout`, and a silent
+    connection is then closed with nothing written.
+  - **Counting.** The host's set of connections, under its lock, is the count of
+    `MaxConnections`, from accept until the socket is closed; `DisposeAsync` closes the
+    same set, after the lock. One connection beyond it gets `ERR 0 connections` in one
+    synchronous send, then a close, both after the lock, with no reader and no timer. The token is compared with
+    `CryptographicOperations.FixedTimeEquals`.
+  - **The end of a connection** runs once, started by whichever comes first under the
+    lock; disposing the socket wakes the reader. Under the lock it takes no more lines and
+    appends the `ERR 0` if it is refused. It then closes its members one at a time
+    (rule 7): a remote member that receives the signal gets its `SIG` under the lock, an
+    in-process one is completed after the lock. Last, after a refusal, it arms the
+    connection's timer for `DeadPeerTimeout` and waits until the flush has sent the
+    `ERR 0` or the timer fires, then shuts the socket down. Every end then disposes the
+    socket, which ends a pending send and receive, and leaves the set. After a dead peer,
+    the client's close, a failed receive or send, or the host's dispose, it disposes the
+    socket at once. The timer of an ending connection disposes its socket.
+- **Changes to the fixed tables of [The protocol](#the-protocol)**, for the owner's
+  approval with the contract of S3, from finding 10 of the review of `docs/protocol.md`
+  (the coordinator) and its round 2:
+  - "Subscription ids" adds that an `UNSUB` sent before its `SUB` is answered is safe,
+    since the host ignores `UNSUB` for a `<sid>` that is not open; so S5's `Dispose` needs
+    no deferred `UNSUB`.
+  - The `protocol` row adds "a `WAIT` for an armed member", which a correct client never
+    sends (principle 9).
+  - "Refusals that close" puts the `ERR` line first: after it the connection takes no
+    more output, and the host removes its members before it closes the connection.
+- **Changes to the internal contract of S2**, for the owner's approval with that of S3:
+  - **`NextWoken`.** Besides `Set` and `CloseAll`, the host writes it under its lock: it
+    walks a chain there, answers the remote members with their `SIG`, and relinks the
+    in-process members into a chain of their own, which it completes after the lock. A
+    remote member answered under the lock can be woken again on another connection
+    before a walk after the lock would reach it; that walk would skip the members behind
+    it.
+  - **Under the lock** the host may also append a line to a connection's output and start
+    its flush, which runs on the thread pool; the send itself stays outside.
+  - **Remote members in the host's walks.** A remote member gets its `SIG` in the
+    section under the lock that woke it: the walk of `Set`, a `Close`, or the end of a
+    connection. After the lock, only in-process waits are completed and the metrics
+    recorded. On the host's dispose nothing is done for remote members: `DisposeAsync`
+    closes every connection anyway.
 - **To read.** [Concept](../concept.md), §4, §6, §11 (18 November 2026); `AGENTS.md`,
   principles 5, 7–10 and "Tests And Samples"; this plan, "The public contract" and "The
   protocol".
@@ -1269,8 +1447,10 @@ approval of this plan, with PQ2 and PQ3 answered.
     `DeadPeerTimeout` (fake clock); `SUB`, `WAIT`, `SIG`, `UNWAIT` in both orders against
     a `SIG`, `UNSUB` and `SET` with its group count; `subscriptions` refused with the
     connection kept; `UNSUB`, `WAIT` and `UNWAIT` for a `<sid>` that is not open
-    ignored; a line too long, an unknown verb, a line before `HELLO`, a name longer than
-    128 and a `SUB` for an open `<sid>` closing with `protocol`; the members of a refused
+    ignored; an `UNSUB` sent before its `SUB` is answered; a line too long, an unknown
+    verb, a line before `HELLO`, a name longer than 128, a `SUB` for an open `<sid>` and a
+    `WAIT` for an armed member closing with `protocol`; the host's dispose closing every
+    connection with nothing more written; the members of a refused
     connection removed when it is closed; `PING` answered; a silent connection closed
     after `DeadPeerTimeout`; a busy member whose connection ends hands its signal to an
     in-process member that already waits; `DisposeAsync` closing every connection and
@@ -1279,13 +1459,20 @@ approval of this plan, with PQ2 and PQ3 answered.
     connection's reader: while the member's code blocks, the host answers the next line
     of that connection (contract, "Completions").
   - The S1 tests of the host's socket pass unskipped.
-  - *Reported*, by scenarios the test author adds to the measurement program: the `SET`
-    lines per second the host applies from one connection with pipelined lines; the
-    bytes it allocates per `SET`; the bytes the codec allocates per parsed and per
-    formatted line.
+  - *Reported*, by scenarios the test author adds to the measurement program, through the
+    host over loopback with a raw socket, since the program uses the public API only: the
+    `SET` lines per second the host applies from one connection with pipelined lines, and
+    the bytes it allocates per `SET`.
   - The documents step adds `UNWAIT` to concept §6 as the owner answered PQ3, row d. The
     standalone host sample runs; `README.md` says the host listens and which protocol it
     speaks, and lists the instrument `connections`.
+- **Small changes made on this branch** (`process.md`, "Small changes during a sprint"):
+  two clarifications of the grammar of `docs/protocol.md`, from the tests step of S3 (the
+  coordinator): a `0` is not an id of a client line, and the host writes it only in
+  `OK 0` and in `ERR 0` with a connection code; `<text>` has no space at its start or end.
+  O12, which edited `docs/work/process.md` and this plan (the owner). From the independent
+  review of S3 (the coordinator): the naming rule of `AGENTS.md` asks a `CancellationToken`
+  only of a method a caller awaits; E1's status line names the host over TCP.
 - **Out of scope.** `SignalClient`; reconnection; explanations.
 
 ### S4 · Refactoring
@@ -1323,9 +1510,9 @@ approval of this plan, with PQ2 and PQ3 answered.
   - *Internal:* none is expected. The tests use the public API, and raw protocol lines
     for a test host that misbehaves on purpose or holds back its answers. If the study
     proposes internal types that tests should address, the planner writes them into this
-    brief and the owner agrees to them (O4) before the contract step; the contract
-    author's work is then shown to the owner and committed only after approval. Without
-    such types the sprint has no contract step.
+    brief and the coordinator approves them after the independent review (O12) before
+    the contract step; the contract author's work is then committed after the
+    coordinator's approval. Without such types the sprint has no contract step.
 - **Study.** Sources, for example: the connection, reconnection and ping handling of the
   NATS .NET client (Apache-2.0); the heartbeats and connection events of
   StackExchange.Redis (MIT); how Microsoft.Data.SqlClient (MIT) confirms the cancellation

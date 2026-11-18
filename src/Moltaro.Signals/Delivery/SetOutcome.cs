@@ -1,7 +1,7 @@
 namespace Moltaro.Signals.Delivery;
 
-// What one SignalDelivery.Set did, so that the host completes the woken waits and records the metrics after it has
-// released its lock.
+// What one SignalDelivery.Set did, so that the host answers the woken remote members with their SIG under its lock, and
+// completes the woken in-process waits and records the metrics after it has released the lock.
 //
 // Groups: the number of (key, group) pairs over the key and its ancestors that the delivery holds, each counted once
 // (rule 2); 0 means nobody listens.

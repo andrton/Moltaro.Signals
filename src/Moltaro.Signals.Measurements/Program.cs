@@ -14,6 +14,7 @@ await RunScenarioAsync("Memory retained per (key, group) and per subscription", 
 await RunScenarioAsync("Allocations of a wait with a deadline and a cancellable token", WaitAllocations.RunAsync);
 await RunScenarioAsync("A set of a key of three segments with members on one level only", AncestorSets.RunAsync);
 await RunScenarioAsync("Sets per second on 2, 4 and 8 threads, reported only", SetRate.RunSeveralThreadsAsync);
+await RunScenarioAsync("SET lines over loopback from one connection, pipelined, reported only", LoopbackSets.RunAsync);
 
 static async Task RunScenarioAsync(string title, Func<Task> scenario)
 {

@@ -6,9 +6,9 @@ is [signal-delivery.html](signal-delivery.html).
 
 **Status, 18 November 2026.** Built for code inside the host process: sprint S2 of the
 first epic built the in-process host, `SignalHost` used as `ISignals`, with everything
-this page shows. The network side is not built yet: the host does not listen, and
-`SignalClient` is not implemented. A member in another process is intended to see the
-same behavior.
+this page shows. Since sprint S3 the host also listens over TCP: members in other
+processes that speak the protocol belong to the same groups and see the same behavior.
+`SignalClient` is not implemented yet.
 
 ## The idea
 

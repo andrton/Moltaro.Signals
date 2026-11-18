@@ -29,7 +29,7 @@ One agent holds one role in a sprint. The separation is the point: nobody checks
 
 | Role | Does | Does not |
 | --- | --- | --- |
-| **Owner** (a person) | Approves the epic plan and every change of the contract; decides escalations; pushes and merges, or gives the coordinator a standing permission to | — |
+| **Owner** (a person) | Approves the epic plan and every change of the public contract (the public API, the protocol, the names of metrics and log categories: everything a consumer of the library deals with); decides escalations; pushes and merges, or gives the coordinator a standing permission to | Approve internal contracts: the coordinator does |
 | **Planner** | Writes the epic document: goal, scope, requirements, the sprints, and the contract of every sprint, stage by stage | Implement |
 | **Coordinator** | Runs an approved epic sprint by sprint: assigns agents, runs the checks, reviews, decides disputes, keeps the epic document current; with the owner's standing permission, pushes and merges a closed sprint | Write production code or tests |
 | **Contract author** | Puts the contract of a sprint into code: the public types and members the brief names, with their documentation, refusing until they are implemented | Design the contract: a name or a signature the brief does not give goes back to the planner. Write the tests of that sprint or implement it |
@@ -63,14 +63,16 @@ stages, which the plan names, the brief gives the types and members exactly, wit
 signatures. For a later stage
 it says what the contract has to be able to do, and the planner writes the types and
 members into those briefs before the stage begins, with what the earlier stages have
-taught. The owner approves the contract of each stage before its first sprint starts. A
+taught. The owner approves the public contract of each stage before its first sprint starts. A
 sprint never starts from a brief whose contract is not written out and approved: an
-interface designed twenty sprints ahead would be changed anyway, and every change of a
-contract goes through the owner.
+interface designed twenty sprints ahead would be changed anyway, and every change of the
+public contract goes through the owner.
 
 For a sprint on a mechanism that has no public surface — signal delivery, the
 protocol codec — the contract is the internal types its tests address; they are named in
-the brief and put into code in the same way.
+the brief and put into code in the same way. An internal contract is reviewed like any
+other and approved by the coordinator; it goes to the owner only when it needs a change of
+the public contract or a decision only the owner can make.
 
 Before any sprint starts:
 
@@ -295,7 +297,7 @@ what was adapted and what was only taken as an idea.
 
 ## When to stop and ask the owner
 
-- The contract has to change.
+- The public contract has to change.
 - A decision of the concept contradicts the brief, or has changed.
 - A finding keeps coming back after the coordinator has settled it once, as
   [Review](#review) describes. The number of review rounds alone is no reason to stop.
