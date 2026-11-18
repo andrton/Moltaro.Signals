@@ -4,8 +4,9 @@ namespace Moltaro.Signals.Delivery;
 // concept.
 //
 // One per host. It is not thread-safe: the host calls it only under its lock. It performs no I/O, awaits nothing, runs
-// no caller code, completes no waiter and knows nothing of sockets; its outcomes name the members whose waits the host
-// completes.
+// no caller code, completes no waiter and knows nothing of sockets; its outcomes name the members it woke. The host
+// answers a remote one with its SIG in the section under the lock that woke it, and completes the wait of an
+// in-process one after the lock.
 //
 // It holds the invariant that a signal is never pending while a member of its (key, group) waits. A (key, group)
 // without members is not held, nor a key without groups, so nothing is kept for a group with no members on a key
@@ -193,8 +194,9 @@ internal sealed class SignalDelivery
         return new CloseOutcome(receiver, Pending: receiver is null);
     }
 
-    // Removes every member, each then Idle, and returns the chain of those that waited, linked through NextWoken, so
-    // that the host ends their waits; null when none waited.
+    // Removes every member, each then Idle, and returns the chain of those that waited, linked through NextWoken; null
+    // when none waited. On its dispose the host ends the waits of the in-process members in the chain and does nothing
+    // for the remote ones: it closes every connection anyway.
     internal GroupMember? CloseAll()
     {
         GroupMember? firstWaited = null;
