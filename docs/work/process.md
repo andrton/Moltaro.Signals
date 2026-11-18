@@ -2,7 +2,7 @@
 
 How an epic goes from a plan to finished code when the work is done by agents. The rules
 every agent follows in every task are in [AGENTS.md](../../AGENTS.md); this document is for
-whoever plans an epic, coordinates its sprints or reviews a sprint.
+whoever plans an epic, coordinates its sprints, reviews a sprint or refactors.
 
 This is the process of Moltaro.Lattice, carried over on 18 November 2026. The owner's rules
 quoted below with their dates were made there and hold here as well. The accepted decisions
@@ -10,16 +10,17 @@ of this project are the decisions D1–D15 of the [concept](../concept.md); a de
 needs more than a row of that table gets a record of its own in `docs/decisions`, created
 when the first such decision is.
 
-## Two tracks
+## Three tracks
 
 | Track | For | How |
 | --- | --- | --- |
 | **Full** | Changes to the core library and to the public contract | Everything below |
+| **Refactoring** | The refactoring sprint of an epic: the whole code base, with no change of behavior | [A refactoring sprint](#a-refactoring-sprint) |
 | **Light** | Documentation, samples, build files, small fixes that change no behavior | One agent, the usual checks, and an independent review |
 
 The coordinator picks the track for each sprint and the plan records it. When in doubt, full.
 
-Every sprint, on either track, is reviewed by an independent reviewer, and the review
+Every sprint, on any track, is reviewed by an independent reviewer, and the review
 repeats after the fixes until it finds nothing that blocks; see [Review](#review).
 
 ## Roles
@@ -35,6 +36,7 @@ One agent holds one role in a sprint. The separation is the point: nobody checks
 | **Test author** | Writes the tests of a sprint from its brief and contract, before the implementation | Implement that sprint |
 | **Implementer** | Makes the tests of the sprint pass | Change what the tests assert; change the contract |
 | **Independent reviewer** | Reviews the result against the brief, with no part in producing it | Fix what it finds |
+| **Refactorer** | In the refactoring sprint, looks at the whole code base — libraries, tests, samples — not at the changes of one sprint, finds the technical debt and removes it: duplication, unclear names, logic in the wrong place, needless complexity, dead code | Change behavior, the public contract or what a test asserts; build for a future need; decide what needs the owner |
 
 ## The plan
 
@@ -48,7 +50,12 @@ with one brief per sprint. A brief has to be enough for an agent that knows noth
   machine, the protocol codec or the transport also what is measured: a benchmark or an
   allocation test.
 - **Out of scope** — what the sprint deliberately leaves alone.
-- **Track** — full or light.
+- **Track** — full, refactoring or light.
+
+**Every epic has a refactoring sprint in its middle**, where the plan finds enough code
+that later sprints build on. A long epic may have more than one. Technical debt grows
+however carefully each sprint is done; a sprint of its own removes it without mixing it
+into a change of behavior.
 
 **The contract is written stage by stage.** An epic of many sprints is divided into
 stages, and every sprint has its brief from the start. For the sprints of the first
@@ -98,9 +105,10 @@ stops and has the plan corrected before the next sprint.
 6. **Fixes.** The implementer fixes every P1, P2 and P3 finding. The next review covers
    only what changed and what was still open. Review and fixes repeat until an
    independent review ends with no P1, P2 or P3 finding that is still open.
-7. **Documents.** The coordinator compares `README.md`, the [concept](../concept.md) and
-   `docs/protocol.md` with what the sprint delivered: what exists and what is planned, names, limits, described
-   behavior. What no longer holds is corrected and committed with the sprint. A
+7. **Documents.** The coordinator compares `README.md`, the [concept](../concept.md),
+   `docs/protocol.md` and the explanations in `docs/explanations` with what the sprint
+   delivered: what exists and what is planned, names, limits, described behavior. What
+   no longer holds is corrected and committed with the sprint. A
    disagreement between the code and an accepted decision is not corrected in the text;
    it goes to the owner.
 8. **Close.** With no P1, P2 or P3 open and the documents current, the coordinator marks
@@ -160,6 +168,26 @@ it still pass; this is the one case in which a member of a contract commit does 
 than refuse. Such an edit never changes what a test asserts. The brief names each such
 edit, and the reviewers check that nothing else was changed under this rule.
 
+## A refactoring sprint
+
+1. **Refactoring.** The refactorer reads the whole code base and the briefs of the sprints
+   that follow, and removes the technical debt it finds: what makes the code hard to read,
+   to change or to keep. It changes no behavior, no public member and no assertion of a
+   test; it may make a test clearer. Each step is its own commit, with the build and every
+   test green after it. A finding that needs a change of the contract or of a decision is
+   reported, not made.
+2. **Verification, review, fixes, documents and close** as in a sprint on the full track,
+   steps 4 to 8, with the refactorer in the implementer's place: it fixes the findings and
+   may contest them. Its commits are the refactoring steps, then the fixes. The reviewer
+   checks in addition that behavior, the contract and the assertions are unchanged, and
+   that every change makes the code simpler to read or to change.
+
+The brief of a refactoring sprint always says to the refactorer: KISS (`AGENTS.md`, "Keep
+It Simple") holds here as everywhere. The task is to remove technical debt where it is
+worth it, so that the code stays clean, easy to understand, easy to change and free of
+duplication. It is always a balance: a change that makes the code larger, more abstract or
+more general than today's case needs is not a refactoring.
+
 ## Review
 
 **What the independent reviewer gets:** the sprint brief, the contract, `AGENTS.md` and the
@@ -184,7 +212,7 @@ goes wrong because of it: a concrete failure or a concrete cost. Then its severi
 
 | Severity | Meaning | Blocks |
 | --- | --- | --- |
-| **P1** | Wrong result; a set lost, one set waking two members of a group, a duplicate turned into a second pass, a dead peer reported as connected; a guarantee of the concept or the contract broken; a security problem; the build or a test fails | Yes |
+| **P1** | Wrong result; a set lost, one set waking two members of a group on a key, a duplicate turned into a second pass, a dead peer reported as connected; a guarantee of the concept or the contract broken; a security problem; the build or a test fails | Yes |
 | **P2** | An accepted decision or an architectural principle is violated; a stated behavior has no test; a concurrency or lifetime hazard; the contract changed without approval | Yes |
 | **P3** | It will cost later: duplication, unclear ownership or naming, missing or misleading public documentation, needless complexity, the quality priorities of the zone ignored | Yes |
 | **P4** | A suggestion or a matter of taste | No; listed for the coordinator |
@@ -211,7 +239,9 @@ decides. What the coordinator cannot decide goes to the owner.
 or P3. A sprint or a plan is never closed on its author's word that a finding was fixed:
 the fix is reviewed. The rounds are not limited by a number: a round that finds something
 new, which is then fixed and reviewed, is the review doing its work, and the sprint goes
-on.
+on. But when the fixes of one area keep producing new findings, the area is over-built
+(`AGENTS.md`, "Keep It Simple"): the coordinator has it simplified instead of fixed again,
+and a simplification that changes the contract or a decision goes to the owner.
 
 A finding that comes back is another matter. When a finding is found again after its fix
 was reviewed, the coordinator settles it itself first: it decides the dispute between the
@@ -251,9 +281,10 @@ what was adapted and what was only taken as an idea.
 
 ## Commits
 
-- A sprint is a short series of commits in this order: contract, tests, implementation,
-  fixes. On the branch they are not squashed, so that "tests first" stays visible in the
-  pull request; the merge squashes them into one commit of `main`.
+- A sprint on the full track is a short series of commits in this order: contract, tests,
+  implementation, fixes; a refactoring sprint is its refactoring steps, then fixes. On the
+  branch they are not squashed, so that "tests first" stays visible in the pull request;
+  the merge squashes them into one commit of `main`.
 - The subject names the epic and the sprint: `Epic 1, sprint 3: tests for re-raising when a busy member leaves`.
 - No agent attribution lines, as `AGENTS.md` says.
 - Commits stay local. Nothing is pushed without the owner's instruction or standing

@@ -9,8 +9,8 @@ Moltaro.Signals is a small .NET library with one primitive: a **remote auto-rese
 with consumer groups**. A host embedded in one process keeps the events in memory; clients
 in other processes connect over one persistent TCP connection with a line-based text
 protocol; code inside the host process uses the same interface without a socket. A signal
-carries no data: it only says "look now", coalesces per key and wakes one waiting member
-of each group.
+carries no data: it only says "look now", coalesces per key and group, and wakes one
+waiting member of each group on each key it sets.
 
 What exists today is the **concept**, nothing else: no code is written yet. The
 [concept](docs/concept.md) is the authority for what the library guarantees: its
@@ -25,6 +25,7 @@ This repository is public. Nothing specific to a private product goes into it.
 | --- | --- |
 | `src` | The solution, every project and the build settings. Run `dotnet` from here. The solution is empty until the first sprint adds its projects |
 | `docs/concept.md` | Where the library comes from, its semantics, protocol principles, decisions and quality bar |
+| `docs/explanations` | Explanations of the architecture and of how the library works, each as Markdown and as HTML. Created with the first explanation |
 | `docs/work` | Working documents: the epics in progress, the development process, branches and releases, exceptions to the rules, open questions |
 
 Planned projects, created by the sprints that need them and named by the epic plan:
@@ -51,6 +52,14 @@ KISS is the base rule for design, code, tests and documentation.
   "just in case".
 - When something is awkward to use, fix its cause. Do not wrap it: no adapter or facade
   class around a core type to work around what the core lacks.
+- Simple to use comes first: a small public surface, few options, one obvious way to do
+  each thing. Then a simple implementation.
+- A case that is rare in practice and costs no guarantee (see "Quality Priorities") is not
+  handled. Its limitation is stated in one sentence, and nothing is built for it.
+- A review finding is fixed by the smallest change that removes it. A new mechanism,
+  option, state or public type is added only when a guarantee needs it; otherwise the fix
+  states the limitation or removes the cause. An area whose fixes keep producing new
+  findings is over-built: simplify it instead of fixing it again.
 
 Simple is not the goal by itself. Do not make something simpler by dropping a guarantee,
 blurring a boundary or pushing the difficulty onto the caller. The target is the simplest
@@ -69,10 +78,10 @@ outside the primitive is declined, or noted as planned in the concept.
    nothing. A disconnected client answers `Unavailable` at once; it never blocks and never
    queues a set for later.
 3. **The last set is never lost.** Every rule of delivery serves this guarantee: one
-   waiting member of a group receives a signal; a member is busy until its next wait, and
-   a set meanwhile raises the event; a member that leaves while busy re-raises it; the
-   first wait after subscribing or reconnecting returns `Joined`. A change that weakens
-   any of these is a defect, whatever it gains.
+   waiting member of a group on a key receives a signal; a member is busy until its next
+   wait, and a set meanwhile raises the event; a member that leaves while busy re-raises
+   it; the first wait after subscribing or reconnecting returns `Joined`. A change that
+   weakens any of these is a defect, whatever it gains.
 4. **The host may restart at any time.** All event state lives in the memory of the host;
    correctness never depends on it surviving. `Joined` after a reconnect is what makes
    this safe.
@@ -86,10 +95,11 @@ outside the primitive is declined, or noted as planned in the concept.
    mutable state, except where a comment says why.
 8. **Waiting is finite and outside locks.** No lock is held across I/O or an `await`. Every
    wait honors cancellation; a wait that can be long has a deadline. A timeout or a limit
-   an application can observe — heartbeat interval, dead-peer time, reconnect backoff, key
-   length, connections, subscriptions per connection — is an option with a default,
-   validated when the host or client starts; it is never a constant in the code. A type
-   that takes more than one lock documents the order.
+   an application can observe — heartbeat interval, dead-peer time, reconnect backoff,
+   connections, subscriptions per connection — is an option with a default, validated
+   when the host or client is created; it is never a constant in the code. The length of
+   a key, a group or the token is not an option: the protocol fixes it, so that both
+   sides check the same limit. A type that takes more than one lock documents the order.
 9. **Never an approximate success.** A request is honored or refused with a code. A
    protocol violation closes the connection with a reason; it is not guessed around.
 10. **Dependencies point one way.** `Moltaro.Signals` depends on nothing outside .NET.
@@ -115,8 +125,8 @@ row left to right: an earlier quality is not traded for a later one.
 | Hosting integration, samples, tests | Readability → simplicity; speed does not matter |
 
 - **Correctness is first everywhere.** For this library it means: the last set is never
-  lost, a set never wakes more than one member of a group, a duplicate never turns into a
-  second pass, and a dead peer is never reported as connected.
+  lost, a set never wakes more than one member of a group on a key, a duplicate never
+  turns into a second pass, and a dead peer is never reported as connected.
 - **A performance claim needs a measurement.** "Faster" or "fewer allocations" is accepted
   with a number from a benchmark or an allocation test, not by argument. Without one, the
   simpler code stays.
@@ -247,13 +257,19 @@ dotnet format --verify-no-changes
   working documents, the epics, are in `docs/work`. The plan for using this library inside
   another product belongs to that product's repository.
 - A decision is not an implementation. Say plainly what exists and what is planned.
+- An explanation of the architecture or of how the library works is written twice, in
+  `docs/explanations`: as Markdown and as HTML, saying the same thing. The two change
+  together, in the same change. The HTML is one self-contained file that opens from disk,
+  without a build, a server or anything loaded from elsewhere. In the main cases, named
+  when the explanation is planned, the HTML is animated: the animation plays on its own,
+  and the reader can step through it, with a caption for each step.
 - When behavior changes, update the document that owns it in the same change: the
   concept for semantics and decisions, `docs/protocol.md` for the wire format,
-  `README.md` for status and use.
+  `README.md` for status and use; and the explanations that describe it, both forms.
 - When a larger block of work is finished — a sprint, an epic, a change of the public
-  contract — compare `README.md`, the concept and `docs/protocol.md` with what now exists.
-  Correct every statement of status, every name, limit and described behavior that no
-  longer holds, in the same change.
+  contract — compare `README.md`, the concept, `docs/protocol.md` and the explanations
+  with what now exists. Correct every statement of status, every name, limit and
+  described behavior that no longer holds, in the same change.
 - That check never changes a guarantee. When the code and an accepted decision disagree,
   it is a finding to report, not a sentence to edit.
 - Requirements that come from a particular consumer are written in general terms.
@@ -281,7 +297,10 @@ dotnet format --verify-no-changes
   permission, by the coordinator of an epic. Do not create or move a release tag.
 - Commit messages carry no agent attribution: no `Co-Authored-By` line and no "generated
   with" line. This overrides the default of any tool.
-- Planning an epic, coordinating its sprints or reviewing a sprint follows the
-  [development process](docs/work/process.md). Read it before taking one of those roles.
+- Planning an epic, coordinating its sprints, reviewing a sprint or refactoring follows
+  the [development process](docs/work/process.md). Read it before taking one of those
+  roles.
+- Technical debt is removed by the refactorer in the refactoring sprint of every epic, as
+  the development process describes. Its measure is this file.
 - Finish by reporting what changed, which checks ran and what is not done. When the task
   leaves changes in Git, suggest a commit message.
