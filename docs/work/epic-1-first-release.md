@@ -1,7 +1,7 @@
 # Epic 1: First release
 
 **Status:** the plan and its contract were approved by the owner on 18 November 2026 (O4);
-no sprint has started.
+S1 is done; S2 is next.
 
 ## Goal
 
@@ -48,6 +48,7 @@ shared token: resistance to denial of service beyond the limits the options stat
 | O7 | **Hierarchical keys, ancestors only.** A key is a path of segments separated by `.`. A set of a key also sets each of its ancestors: a set of `entity.contacts.42` acts as a set of `entity.contacts.42`, `entity.contacts` and `entity`, each by rule 1, for every (key, group) among these keys that has members. No wildcards, no setting of descendants; anything more is a separate decision later |
 | O8 | **A refactoring sprint in the middle of every epic**, on the refactoring track of the [development process](process.md#a-refactoring-sprint); in this epic S4, after S3 |
 | O9 | **Three contract wordings.** The rules act per (key, group); an attempt that ends without the host's answer to its `HELLO` raises no `StateChanged`; the client logs a refused attempt in its Warning line, with no Error line |
+| O10 | **O1 covers this epic's documents too.** The standing permission of O1 also covers the pull requests of this epic's documents — the plan, the contracts of later stages, light-track changes — once they are reviewed and, where the process asks for it, approved by the owner. It never covers the release change, which stays with the owner, or what O1 excludes |
 
 ## Requirements
 
@@ -889,7 +890,7 @@ S1 contract ── S2 state machine, in-process ── S3 protocol, host over TC
 
 | Sprint | Result | Track | Status |
 | --- | --- | --- | --- |
-| S1 | The public contract, the projects and the test lane | Full | Not started |
+| S1 | The public contract, the projects and the test lane | Full | Done, 18 November 2026: 3 review rounds |
 | S2 | The event state machine and the in-process host | Full | Not started |
 | S3 | The protocol, its codec and the host over TCP | Full | Not started |
 | S4 | Refactoring of the code base after S3 | Refactoring | Not started |
@@ -991,6 +992,10 @@ approval of this plan, with PQ2 and PQ3 answered.
     README](README.md) on the repository as it is set up are corrected; in the concept,
     the examples of §3 are edited as PQ3, row c, says, and the sketch of §7 takes the
     names of the contract.
+- **Small changes made on this branch** (`process.md`, "Small changes during a sprint"):
+  O10, decided by the owner on 18 November 2026; the notes in the briefs of S2 (a test of
+  S1 to tighten) and of S6 (the standalone host as one piece), decided by the coordinator
+  from the independent review of S1.
 - **Out of scope.** Any behavior beyond the checks; internal types other than those of
   [Internal types of S1](#internal-types-of-s1); the measurement program;
   `docs/protocol.md`; explanations.
@@ -1076,6 +1081,13 @@ approval of this plan, with PQ2 and PQ3 answered.
   - The documents step makes the edits of PQ3, rows b and h, and writes the answer to
     PQ2 into concept §11. The in-process samples run to the end; `README.md` says the
     in-process host works and lists the instruments of this sprint.
+- **A test of S1 to tighten** (from the review of S1). In
+  `src/Moltaro.Signals.Tests/Names/NameRuleTests.cs`, the test
+  `A_name_that_keeps_the_rule_is_accepted_as_a_key_and_as_a_group` accepts any exception
+  except `ArgumentException`, because `Subscribe` refuses until S2. In the tests step, the
+  test author of S2 replaces its `Record.Exception` with a plain call and skips the test
+  with the shared reason, as a correction of a wrong test (`process.md`), with the reason
+  in the commit message; the implementer removes the skip.
 - **Out of scope.** Sockets, `Start`, the protocol, the client, the instrument
   `connections`.
 
@@ -1304,6 +1316,9 @@ approval of this plan, with PQ2 and PQ3 answered.
     goes to the owner.
   - Items 2 to 6 of [The first release](#the-first-release) hold, item 3 without its
     last sentence, which only the release change can make true.
+- **A sample of S1 to complete** (from the review of S1). The standalone host becomes one
+  piece a reader can copy, still about 30 lines, its Ctrl+C wiring included; today that
+  wiring sits in `Program.cs`, apart from `StandaloneHost.cs`.
 - **Out of scope.** Configuration binding helpers, health checks, anything of concept §9.
 
 ## The first release

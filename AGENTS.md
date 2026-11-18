@@ -12,8 +12,9 @@ protocol; code inside the host process uses the same interface without a socket.
 carries no data: it only says "look now", coalesces per key and group, and wakes one
 waiting member of each group on each key it sets.
 
-What exists today is the **concept**, nothing else: no code is written yet. The
-[concept](docs/concept.md) is the authority for what the library guarantees: its
+What exists today is the **concept** and the **public contract** in code, in which only
+its checks work; the epic in [current work](docs/work/README.md) builds the
+rest. The [concept](docs/concept.md) is the authority for what the library guarantees: its
 semantics, its decisions D1–D15 and its non-goals. `README.md` says what works today; a
 feature is delivered when the README says so.
 
@@ -23,12 +24,12 @@ This repository is public. Nothing specific to a private product goes into it.
 
 | Path | Contents |
 | --- | --- |
-| `src` | The solution, every project and the build settings. Run `dotnet` from here. The solution is empty until the first sprint adds its projects |
+| `src` | The solution, every project and the build settings. Run `dotnet` from here |
 | `docs/concept.md` | Where the library comes from, its semantics, protocol principles, decisions and quality bar |
 | `docs/explanations` | Explanations of the architecture and of how the library works, each as Markdown and as HTML. Created with the first explanation |
 | `docs/work` | Working documents: the epics in progress, the development process, branches and releases, exceptions to the rules, open questions |
 
-Planned projects, created by the sprints that need them and named by the epic plan:
+The projects:
 
 | Project | Contents |
 | --- | --- |
@@ -36,7 +37,8 @@ Planned projects, created by the sprints that need them and named by the epic pl
 | `src/Moltaro.Signals.Hosting` | Registration in a .NET generic host and a container; a thin separate package |
 | `src/Moltaro.Signals.Samples` | Runnable samples of intended use, including a standalone host of a few lines |
 | `src/*.Tests` | Tests, one project per library |
-| `src/Moltaro.Signals.Measurements` | The benchmark program of the concept's performance targets. Started by hand; never shipped and not a test project |
+| `src/Moltaro.Signals.TestSupport` | Code that two or more test projects need, as "Tests And Samples" says. Never shipped; no tests |
+| `src/Moltaro.Signals.Measurements` | Planned with the event state machine: the benchmark program of the concept's performance targets. Started by hand; never shipped and not a test project |
 
 The repository root holds only repository-level files. Code never lives there.
 
@@ -74,9 +76,11 @@ outside the primitive is declined, or noted as planned in the concept.
 1. **A signal is state, not a message.** It has no payload, no history and no
    persistence. Receivers read the facts from their own storage. Nothing in the library
    queues, orders or replays signals.
-2. **Set is idempotent and never waits for the network.** Setting a raised event does
-   nothing. A disconnected client answers `Unavailable` at once; it never blocks and never
-   queues a set for later.
+2. **Set is idempotent and never waits for a connection.** Setting a raised event does
+   nothing. A client that is not connected answers `Unavailable` at once; it never blocks
+   and never queues a set for later. A connected client waits only for the host's answer,
+   which carries the group count; that wait ends at the latest when a silent connection
+   is declared dead.
 3. **The last set is never lost.** Every rule of delivery serves this guarantee: one
    waiting member of a group on a key receives a signal; a member is busy until its next
    wait, and a set meanwhile raises the event; a member that leaves while busy re-raises

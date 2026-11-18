@@ -1,7 +1,7 @@
 # Moltaro.Signals — concept
 
-Status: agreed concept, 18 November 2026. Nothing is implemented yet; [README.md](../README.md)
-says what works today.
+Status: agreed concept, 18 November 2026. The public contract exists in code; the
+behavior is not implemented yet. [README.md](../README.md) says what works today.
 
 ## 1. Where it comes from
 
@@ -94,7 +94,7 @@ durable storage and be claimed there; a signal only makes waiting free.
 ### Typical consumer loop
 
 ```csharp
-await using var lane = await signals.SubscribeAsync("jobs", "workers", ct);
+using var lane = signals.Subscribe("jobs", "workers");
 while (!ct.IsCancellationRequested)
 {
     // Returns on a signal, on Joined (first call / reconnect) or at the next own deadline.
@@ -110,8 +110,8 @@ A lane that finds more work than one batch can call `Set` itself to wake another
 ```csharp
 // After the writing transaction has committed — never inside it.
 var result = await signals.SetAsync("jobs", ct);
-// result.Groups == 0      -> no receiver is running; the work waits in storage.
-// result is Unavailable   -> this client has no connection to the host right now.
+// Applied with Groups 0   -> no receiver is running; the work waits in storage.
+// Status is Unavailable   -> this client has no connection to the host right now.
 ```
 
 ## 4. Liveness
@@ -162,26 +162,28 @@ Every reply names the request it answers; pushes are distinguishable by their ve
 Keys and groups use a restricted character set (`A–Z a–z 0–9 . _ : -`) and a length limit;
 the host also limits line length, subscriptions per connection and connections.
 
-## 7. .NET surface (sketch)
+## 7. .NET surface
 
 ```csharp
 public interface ISignals
 {
-    SignalConnectionState State { get; }
-    event EventHandler<SignalConnectionState>? StateChanged;
+    SignalConnectionStateEnum State { get; }
+    event EventHandler<SignalConnectionChangedEventArgs>? StateChanged;
 
-    ValueTask<SetResult> SetAsync(string key, CancellationToken cancellationToken = default);
-    ValueTask<ISignalSubscription> SubscribeAsync(string key, string group, CancellationToken cancellationToken = default);
+    ValueTask<SignalSetResult> SetAsync(string key, CancellationToken cancellationToken = default);
+    ISignalSubscription Subscribe(string key, string group);
 }
 
-public interface ISignalSubscription : IAsyncDisposable
+public interface ISignalSubscription : IDisposable
 {
-    /// <summary>Signaled, Joined (first call or after reconnect) or DeadlineReached.</summary>
-    ValueTask<WaitResult> WaitAsync(DateTimeOffset? until, CancellationToken cancellationToken = default);
+    /// <summary>Joined (first call or after reconnect), Signaled or DeadlineReached.</summary>
+    ValueTask<SignalWaitResultEnum> WaitAsync(DateTimeOffset? until, CancellationToken cancellationToken = default);
 }
 ```
 
-Final names and shapes are decided during implementation and reviewed as public API.
+`SignalHost` implements it in the host process and `SignalClient` in other processes;
+`Moltaro.Signals.Hosting` registers either in a generic host. Every public member is
+documented in the code.
 
 ## 8. Decisions
 

@@ -5,15 +5,14 @@ delivered over several sprints.
 
 | Epic | Result | Status |
 | --- | --- | --- |
-| 1. [First release](epic-1-first-release.md) | The library as the [concept](../concept.md) describes it, published on nuget.org as its first version | Planned and approved by the owner on 18 November 2026; no sprint has started |
+| 1. [First release](epic-1-first-release.md) | The library as the [concept](../concept.md) describes it, published on nuget.org as its first version | Approved by the owner on 18 November 2026; in progress, see the status of its sprints |
 
 ## The repository as it is set up
 
-- `src` holds the build settings and an empty solution, so that CI runs from the first pull
-  request. The first sprint of Epic 1 adds the projects that `AGENTS.md` lists as planned,
-  except the measurement program, which its second sprint adds.
-- `src/global.json` does not name a test runner yet. The sprint that adds the first test
-  project adds it there, with the test framework the plan of Epic 1 names.
+- `src` holds the build settings and the solution with the projects that `AGENTS.md`
+  lists; the measurement program comes with the second sprint of Epic 1.
+- The tests run on xUnit.net v3 and Microsoft.Testing.Platform, which `src/global.json`
+  names as the test runner.
 - The rules of `main` and of release tags are files in `.github/rulesets`. GitHub applies
   them only after the owner does, as [branches and releases](branches.md#setting-it-up-on-github)
   describes.

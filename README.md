@@ -6,9 +6,10 @@ the case where a message broker is used only as a wake-up doorbell.
 
 ## Status
 
-Concept stage. The [concept](docs/concept.md) is agreed; no code is written yet, and
-nothing below works today. The first epic, the library up to its first release, is
-planned in [current work](docs/work/README.md).
+Contract stage. The public contract of both packages exists in code, with its
+documentation; only the checks of options, names and arguments work, and the rest is not
+implemented yet. Nothing below works today. The first epic, the
+library up to its first release, is under way in [current work](docs/work/README.md).
 
 ## What it is, and what it is not
 
