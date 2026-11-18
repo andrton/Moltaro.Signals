@@ -546,6 +546,9 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     // closed with nothing written.
     private async Task AcceptAsync(Socket listener)
     {
+        // Start returns once the socket is bound, even when accept fails at once and keeps failing.
+        await Task.Yield();
+
         while (true)
         {
             Socket socket;
