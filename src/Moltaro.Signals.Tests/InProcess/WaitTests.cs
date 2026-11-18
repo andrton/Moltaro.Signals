@@ -115,7 +115,8 @@ public sealed class WaitTests
         await lane.WaitAsync(until: null, cancellationToken);
         ValueTask<SignalWaitResultEnum> earlier = lane.WaitAsync(clock.GetUtcNow().AddSeconds(5), cancellationToken);
         await host.SetAsync("jobs", cancellationToken);
-        await earlier;
+
+        Assert.Equal(SignalWaitResultEnum.Signaled, await earlier);
 
         ValueTask<SignalWaitResultEnum> later = lane.WaitAsync(until: null, CancellationToken.None);
         clock.Advance(TimeSpan.FromSeconds(5));

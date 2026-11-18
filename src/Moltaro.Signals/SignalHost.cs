@@ -59,7 +59,7 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     /// </remarks>
     public const string MeterName = "Moltaro.Signals";
 
-    // The one lock of the host. It guards _delivery, the change of _disposed, and the wait fields of every
+    // The one lock of the host. It guards _delivery, the change of _disposal, and the wait fields of every
     // subscription. Under it the host runs no code of the application except, for deadlines, TimeProvider.CreateTimer
     // and ITimer.Change: the due time is at least 1 ms, so a TimeProvider does not call back inside them, and the
     // timer's own lock is taken inside this one, never the other way round. Waits are completed, measurements recorded
@@ -82,8 +82,9 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
 
     private readonly Counter<long> _handedOn;
 
-    // Written under _lock; State reads it without the lock.
-    private volatile bool _disposed;
+    // Null until the host is disposed. The first DisposeAsync creates it under _lock and completes it once it has ended
+    // the in-process side; a later call returns its task. State reads it without the lock.
+    private volatile TaskCompletionSource? _disposal;
 
     /// <summary>
     /// Creates a host with its signal delivery in memory. Its in-process <see cref="ISignals"/> works from here on,
@@ -151,7 +152,7 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     /// <see cref="SignalConnectionStateEnum.Disconnected"/> afterwards.
     /// </summary>
     public SignalConnectionStateEnum State =>
-        _disposed ? SignalConnectionStateEnum.Disconnected : SignalConnectionStateEnum.Connected;
+        _disposal is null ? SignalConnectionStateEnum.Connected : SignalConnectionStateEnum.Disconnected;
 
     /// <summary>
     /// Never raised: the in-process <see cref="ISignals"/> of a host is connected for as long as the host lives.
@@ -220,7 +221,7 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
 
         lock (_lock)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
 
             if (cancellationToken.IsCancellationRequested)
             {
@@ -269,7 +270,7 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
 
         lock (_lock)
         {
-            ObjectDisposedException.ThrowIf(_disposed, this);
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
 
             _delivery.Open(subscription, key, group);
         }
@@ -297,17 +298,19 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     /// </remarks>
     public ValueTask DisposeAsync()
     {
+        TaskCompletionSource disposal;
         GroupMember? firstWaited;
 
         lock (_lock)
         {
-            // The in-process side ends at once, so a second call finds it ended and has nothing to wait for.
-            if (_disposed)
+            // A later call waits for the first, which may still be ending the waits or disposing the meter.
+            if (_disposal is not null)
             {
-                return ValueTask.CompletedTask;
+                return new ValueTask(_disposal.Task);
             }
 
-            _disposed = true;
+            disposal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _disposal = disposal;
             firstWaited = _delivery.CloseAll();
         }
 
@@ -320,8 +323,9 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
         }
 
         _meter.Dispose();
+        disposal.SetResult();
 
-        return ValueTask.CompletedTask;
+        return new ValueTask(disposal.Task);
     }
 
     // After the lock: completes the waits of the members that a set woke, and counts them as deliveries.

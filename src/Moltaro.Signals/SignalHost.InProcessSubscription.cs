@@ -41,9 +41,10 @@ public sealed partial class SignalHost
 
             lock (_host._lock)
             {
-                ObjectDisposedException.ThrowIf(_host._disposed, _host);
+                ObjectDisposedException.ThrowIf(_host._disposal is not null, _host);
                 ObjectDisposedException.ThrowIf(_disposed, this);
 
+                // With a token, a call in the pool hop between _waiter and the wait's own task completing is accepted.
                 if (_waiter is { Task.IsCompleted: false })
                 {
                     throw new InvalidOperationException("Another wait of this subscription has not completed.");
@@ -100,25 +101,34 @@ public sealed partial class SignalHost
 
         public void Dispose()
         {
-            CloseOutcome outcome;
-            TaskCompletionSource<SignalWaitResultEnum>? waiter;
+            CloseOutcome outcome = default;
+            TaskCompletionSource<SignalWaitResultEnum>? waiter = null;
             ITimer? timer;
+            bool closing;
 
             lock (_host._lock)
             {
-                // After the host's dispose the subscription has ended with the host, and its own dispose does nothing.
-                if (_disposed || _host._disposed)
-                {
-                    return;
-                }
-
-                _disposed = true;
-                outcome = _host._delivery.Close(this);
-                waiter = _waiter;
+                // Taken after the host's dispose too: an armed timer would keep the subscription and the host
+                // reachable until its deadline.
                 timer = _timer;
+
+                // After the host's dispose the subscription has ended with the host, so its own dispose ends nothing.
+                closing = !_disposed && _host._disposal is null;
+
+                if (closing)
+                {
+                    _disposed = true;
+                    outcome = _host._delivery.Close(this);
+                    waiter = _waiter;
+                }
             }
 
             timer?.Dispose();
+
+            if (!closing)
+            {
+                return;
+            }
 
             // A wait that has not completed ends here, also one that a set has woken but whose completion has not run
             // yet: Close found the member busy and handed its signal on, so the signal is not lost.
