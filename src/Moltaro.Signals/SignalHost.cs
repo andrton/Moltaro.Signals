@@ -65,8 +65,8 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     // The one lock of the host. It guards _delivery, the change of _disposal and of _listener, the wait fields of every
     // subscription, _openConnections, and of every connection its members, its pending output, its flush and the state
     // of its end. Under it the host runs no code of the application except, for deadlines and connections,
-    // TimeProvider.CreateTimer and ITimer.Change: the due time is at least 1 ms, so a TimeProvider does not call back
-    // inside them, and the timer's own lock is taken inside this one, never the other way round. Under it the host also
+    // TimeProvider.CreateTimer and ITimer.Change, with a positive due time, so a TimeProvider does not call back inside
+    // them, and the timer's own lock is taken inside this one, never the other way round. Under it the host also
     // appends a line to the output of a connection, in the section that decided it, and starts the flush of that output
     // on the thread pool, which runs nothing inline; the send itself stays outside. Waits are completed, measurements
     // recorded, cancellations registered and sockets closed after it is released.
@@ -464,6 +464,9 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
         {
             GroupMember? next = member.NextWoken;
 
+            // Unlinked, so that a remote member keeps no member that followed it reachable, nor that member's connection
+            // once it is closed.
+            member.NextWoken = null;
             woken++;
 
             if (member is RemoteMember remote)
@@ -472,8 +475,6 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
             }
             else
             {
-                member.NextWoken = null;
-
                 if (lastInProcess is null)
                 {
                     firstInProcess = member;
@@ -524,7 +525,7 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     // timer.
     private static void TurnAway(Socket socket)
     {
-        Span<byte> line = stackalloc byte[ProtocolRules.MaxLineLength + 2];
+        Span<byte> line = stackalloc byte[ProtocolRules.LineRoom];
         int length = LineFormatter.Error(line, 0, ProtocolErrorEnum.Connections, "The host holds its limit of connections.");
 
         try
@@ -552,19 +553,30 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
             try
             {
                 socket = await listener.AcceptAsync().ConfigureAwait(false);
-
-                // A line goes out at once, not held back to be sent together with later ones.
-                socket.NoDelay = true;
             }
-            catch (SocketException exception) when (exception.SocketErrorCode == SocketError.ConnectionReset)
+            catch (SocketException exception) when (exception.SocketErrorCode != SocketError.OperationAborted && _disposal is null)
             {
-                // A connection reset before the host took it in; the next one is accepted all the same.
+                // A connection that failed before the host took it in; the next one is accepted all the same. A
+                // persistent error, for example EMFILE, makes the loop retry at once.
                 continue;
             }
             catch (Exception exception) when (exception is SocketException or ObjectDisposedException)
             {
-                // The listener was closed. Limitation: any other failure of accept also ends listening.
+                // The listener was closed.
                 return;
+            }
+
+            try
+            {
+                // A line goes out at once, not held back to be sent together with later ones.
+                socket.NoDelay = true;
+            }
+            catch (SocketException)
+            {
+                // The client is gone already.
+                socket.Dispose();
+
+                continue;
             }
 
             // Read before the lock is taken, because the TimeProvider is code of the application.
@@ -647,12 +659,17 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
         }
     }
 
-    // After the listener and every connection are closed.
+    // After the listener and every connection are closed. A failure of what it waited for still completes the dispose.
     private async Task FinishDisposeAsync(Task closed, TaskCompletionSource disposal)
     {
-        await closed.ConfigureAwait(false);
-
-        FinishDispose(disposal);
+        try
+        {
+            await closed.ConfigureAwait(false);
+        }
+        finally
+        {
+            FinishDispose(disposal);
+        }
     }
 
     // Disposing the meter runs the MeasurementsCompleted callbacks of the application's listeners, which may throw: the

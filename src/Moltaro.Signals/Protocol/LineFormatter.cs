@@ -5,8 +5,8 @@ using System.Text;
 namespace Moltaro.Signals.Protocol;
 
 // Writes the lines of docs/protocol.md: those the host sends to a client, and those the remote client sends to the
-// host. Each method writes one line with its \r\n into destination, which has room for ProtocolRules.MaxLineLength + 2
-// bytes, and returns its length in bytes. It allocates nothing. The codec knows nothing of signal delivery or sockets.
+// host. Each method writes one line with its \r\n into destination, which has room for ProtocolRules.LineRoom bytes,
+// and returns its length in bytes. It allocates nothing. The codec knows nothing of signal delivery or sockets.
 internal static class LineFormatter
 {
     // OK <id>: OK 0, the answer to an accepted HELLO, or OK <sid>, the answer to SUB or to UNWAIT.

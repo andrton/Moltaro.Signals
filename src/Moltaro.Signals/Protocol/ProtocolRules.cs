@@ -25,6 +25,10 @@ internal static class ProtocolRules
     // digits and a token of MaxTokenLength characters.
     internal const int MaxLineLength = 282;
 
+    // The most bytes of a line with its \r\n: the room for one line, and the bytes after which a buffer with no \n holds
+    // a line that is too long.
+    internal const int LineRoom = MaxLineLength + 2;
+
     // True for 1 to MaxNameLength characters, each one of A-Z a-z 0-9 . _ : -, where '.' separates segments and no
     // segment is empty.
     internal static bool IsName(ReadOnlySpan<char> value)
@@ -50,5 +54,39 @@ internal static class ProtocolRules
     internal static bool IsToken(ReadOnlySpan<char> value)
     {
         return value.Length is > 0 and <= MaxTokenLength && !value.ContainsAnyExceptInRange('!', '~');
+    }
+
+    // True for an id as its ASCII bytes: 1 to MaxIdLength digits with no leading zero, from 1 to 2^63-1, given in id.
+    // A 0 is no id: the host writes it only for the connection itself.
+    internal static bool IsId(ReadOnlySpan<byte> value, out long id)
+    {
+        id = 0;
+
+        if (value.Length is 0 or > MaxIdLength || value[0] == '0')
+        {
+            return false;
+        }
+
+        // MaxIdLength digits stay below 2^64, so the value cannot overflow before it is compared.
+        ulong number = 0;
+
+        foreach (byte digit in value)
+        {
+            if (!char.IsAsciiDigit((char)digit))
+            {
+                return false;
+            }
+
+            number = (number * 10) + (ulong)(digit - '0');
+        }
+
+        if (number > long.MaxValue)
+        {
+            return false;
+        }
+
+        id = (long)number;
+
+        return true;
     }
 }

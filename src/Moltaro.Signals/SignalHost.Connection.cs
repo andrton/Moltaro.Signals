@@ -23,9 +23,6 @@ public sealed partial class SignalHost
     // host's dispose. From that section the connection takes no more lines and no more output.
     private sealed class Connection
     {
-        // Room for the longest line and its \r\n.
-        private const int LineRoom = ProtocolRules.MaxLineLength + 2;
-
         private const int BufferLength = 4096;
 
         // The fixed sentences of the refusals that depend on the state of the connection, written as the <text> of an
@@ -215,7 +212,7 @@ public sealed partial class SignalHost
         // Under the host's lock: room for one line at the end of the pending output.
         private Span<byte> LineSpace()
         {
-            return _pending.GetSpan(LineRoom);
+            return _pending.GetSpan(ProtocolRules.LineRoom);
         }
 
         // Under the host's lock: takes the line just written into LineSpace into the pending output, and starts a flush
@@ -223,7 +220,15 @@ public sealed partial class SignalHost
         private void Write(int length)
         {
             _pending.Advance(length);
-            _flush ??= Task.Run(_flushAsync);
+
+            if (_flush is null)
+            {
+                // The flush serves the connection, not the code that wrote the line, so it does not capture the
+                // execution context of that code, as Start does not for the loop that accepts connections.
+                using AsyncFlowControl? flow = ExecutionContext.IsFlowSuppressed() ? null : ExecutionContext.SuppressFlow();
+
+                _flush = Task.Run(_flushAsync);
+            }
         }
 
         // Receives, stores the time, and handles every complete line before it receives again, once the output is sent.

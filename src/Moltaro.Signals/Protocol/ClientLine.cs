@@ -9,18 +9,9 @@ namespace Moltaro.Signals.Protocol;
 // or sockets.
 internal readonly ref struct ClientLine
 {
-    // The most bytes of a line with its \r\n: a buffer that holds this many with no \n holds a line that is too long.
-    private const int LongestLine = ProtocolRules.MaxLineLength + 2;
-
-    // The fixed sentences of the refusals, written as the <text> of the host's ERR 0 line. None repeats what the client
-    // sent.
-    private const string TooLong = "A line is longer than 282 characters.";
-
-    private const string NoLineEnd = "A line does not end with CR LF.";
-
-    private const string OutsideAscii = "A line holds a character outside U+0020 to U+007E.";
-
-    private const string NotOneSpace = "A line is empty, or its fields are not separated by exactly one space.";
+    // The fixed sentences of the refusals, written as the <text> of the host's ERR 0 line, beside those of LineFraming.
+    // None repeats what the client sent.
+    private const string NotOneSpace = "The fields of a line are not separated by exactly one space.";
 
     private const string UnknownVerb = "A line has an unknown verb.";
 
@@ -91,10 +82,10 @@ internal readonly ref struct ClientLine
 
     // Reads the first line of buffer where it lies, without copying or allocating.
     //
-    // Incomplete when buffer holds no \n yet and fewer than ProtocolRules.MaxLineLength + 2 bytes. Refused with
-    // Protocol for a line that breaks the grammar of docs/protocol.md or is too long, and with Version for a HELLO of
-    // another version, Reason holding in both cases the fixed sentence the host writes as <text>. Otherwise Complete,
-    // with Length counting the \r\n.
+    // Incomplete when buffer holds no \n yet and fewer than ProtocolRules.LineRoom bytes. Refused with Protocol for a
+    // line that breaks the grammar of docs/protocol.md or is too long, and with Version for a HELLO of another version,
+    // Reason holding in both cases the fixed sentence the host writes as <text>. Otherwise Complete, with Length
+    // counting the \r\n.
     //
     // A name is checked by widening its bytes onto the stack and calling ProtocolRules.IsName.
     //
@@ -103,30 +94,22 @@ internal readonly ref struct ClientLine
     // line after HELLO.
     internal static ClientLine Read(ReadOnlySpan<byte> buffer)
     {
-        int lineFeed = buffer[..Math.Min(buffer.Length, LongestLine)].IndexOf((byte)'\n');
+        LineStatusEnum status = LineFraming.Find(buffer, out ReadOnlySpan<byte> text, out int length, out string? reason);
 
-        if (lineFeed < 0)
+        if (status == LineStatusEnum.Incomplete)
         {
             // The default line is Incomplete.
-            return buffer.Length < LongestLine ? default : Refuse(TooLong);
+            return default;
         }
 
-        if (lineFeed == 0 || buffer[lineFeed - 1] != '\r')
+        if (status == LineStatusEnum.Refused)
         {
-            return Refuse(NoLineEnd);
-        }
-
-        ReadOnlySpan<byte> text = buffer[..(lineFeed - 1)];
-        int length = lineFeed + 1;
-
-        if (text.ContainsAnyExceptInRange((byte)' ', (byte)'~'))
-        {
-            return Refuse(OutsideAscii);
+            return Refuse(reason!);
         }
 
         // The rules of Lines hold for the whole line before any field is read, so that a HELLO of another version
         // that breaks them is protocol, not version.
-        if (text.IsEmpty || text[0] == ' ' || text[^1] == ' ' || text.IndexOf("  "u8) >= 0)
+        if (text.IndexOf("  "u8) >= 0)
         {
             return Refuse(NotOneSpace);
         }
@@ -134,7 +117,7 @@ internal readonly ref struct ClientLine
         // Every field is now one or more characters without a space.
         int fields = text.Count((byte)' ') + 1;
         ReadOnlySpan<byte> rest = text;
-        ReadOnlySpan<byte> verb = NextField(ref rest);
+        ReadOnlySpan<byte> verb = LineFraming.NextField(ref rest);
 
         if (verb.SequenceEqual("HELLO"u8))
         {
@@ -183,7 +166,7 @@ internal readonly ref struct ClientLine
             return Refuse(WrongFields);
         }
 
-        if (!TryReadId(NextField(ref rest), out long version))
+        if (!ProtocolRules.IsId(LineFraming.NextField(ref rest), out long version))
         {
             return Refuse(NotAnId);
         }
@@ -216,12 +199,12 @@ internal readonly ref struct ClientLine
             return Refuse(WrongFields);
         }
 
-        if (!TryReadId(NextField(ref rest), out long sid))
+        if (!ProtocolRules.IsId(LineFraming.NextField(ref rest), out long sid))
         {
             return Refuse(NotAnId);
         }
 
-        ReadOnlySpan<byte> key = NextField(ref rest);
+        ReadOnlySpan<byte> key = LineFraming.NextField(ref rest);
         ReadOnlySpan<byte> group = rest;
 
         if (!IsName(key) || !IsName(group))
@@ -240,7 +223,7 @@ internal readonly ref struct ClientLine
             return Refuse(WrongFields);
         }
 
-        if (!TryReadId(rest, out long sid))
+        if (!ProtocolRules.IsId(rest, out long sid))
         {
             return Refuse(NotAnId);
         }
@@ -256,7 +239,7 @@ internal readonly ref struct ClientLine
             return Refuse(WrongFields);
         }
 
-        if (!TryReadId(NextField(ref rest), out long rid))
+        if (!ProtocolRules.IsId(LineFraming.NextField(ref rest), out long rid))
         {
             return Refuse(NotAnId);
         }
@@ -274,59 +257,6 @@ internal readonly ref struct ClientLine
     private static ClientLine Refuse(string reason)
     {
         return new ClientLine(ProtocolErrorEnum.Protocol, reason);
-    }
-
-    // Takes the field at the start of rest, which holds no space at its start and no two spaces in a row, and leaves
-    // rest after the space that follows it.
-    private static ReadOnlySpan<byte> NextField(scoped ref ReadOnlySpan<byte> rest)
-    {
-        int space = rest.IndexOf((byte)' ');
-
-        if (space < 0)
-        {
-            ReadOnlySpan<byte> last = rest;
-            rest = default;
-
-            return last;
-        }
-
-        ReadOnlySpan<byte> field = rest[..space];
-        rest = rest[(space + 1)..];
-
-        return field;
-    }
-
-    // An id of a client line: 1 to MaxIdLength digits with no leading zero, from 1 to 2^63-1. A 0 is the host's.
-    private static bool TryReadId(ReadOnlySpan<byte> field, out long id)
-    {
-        id = 0;
-
-        if (field.Length is 0 or > ProtocolRules.MaxIdLength || field[0] == '0')
-        {
-            return false;
-        }
-
-        // 19 digits stay below 2^64, so the value cannot overflow before it is compared.
-        ulong value = 0;
-
-        foreach (byte digit in field)
-        {
-            if (!char.IsAsciiDigit((char)digit))
-            {
-                return false;
-            }
-
-            value = (value * 10) + (ulong)(digit - '0');
-        }
-
-        if (value > long.MaxValue)
-        {
-            return false;
-        }
-
-        id = (long)value;
-
-        return true;
     }
 
     // The bytes of a field are ASCII already, so widening them gives the characters the rule of names is stated for.

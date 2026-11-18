@@ -7,20 +7,9 @@ namespace Moltaro.Signals.Protocol;
 // or sockets.
 internal readonly ref struct HostLine
 {
-    // The most bytes of a line with its \r\n: a buffer that holds this many with no \n holds a line that is too long.
-    private const int LongestLine = ProtocolRules.MaxLineLength + 2;
-
-    // The most digits of <groups>, which is at most 2^31-1.
-    private const int MaxGroupsLength = 10;
-
-    // The fixed sentences of the refusals, for the reason a client gives when it closes the connection.
-    private const string TooLong = "A line of the host is longer than 282 characters.";
-
-    private const string NoLineEnd = "A line of the host does not end with CR LF.";
-
-    private const string OutsideAscii = "A line of the host holds a character outside U+0020 to U+007E.";
-
-    private const string NotOneSpace = "A line of the host is empty, or its fields are not separated by exactly one space.";
+    // The fixed sentences of the refusals, for the reason a client gives when it closes the connection, beside those of
+    // LineFraming.
+    private const string NotOneSpace = "The fields of a line of the host are not separated by exactly one space.";
 
     private const string UnknownVerb = "A line of the host has an unknown verb.";
 
@@ -86,39 +75,26 @@ internal readonly ref struct HostLine
 
     // Reads the first line of buffer where it lies, without copying or allocating.
     //
-    // Incomplete when buffer holds no \n yet and fewer than ProtocolRules.MaxLineLength + 2 bytes. Refused with
-    // Protocol for a line that breaks the grammar of docs/protocol.md or is too long, Reason holding the fixed
-    // sentence that says why. Otherwise Complete, with Length counting the \r\n.
+    // Incomplete when buffer holds no \n yet and fewer than ProtocolRules.LineRoom bytes. Refused with Protocol for a
+    // line that breaks the grammar of docs/protocol.md or is too long, Reason holding the fixed sentence that says why.
+    // Otherwise Complete, with Length counting the \r\n.
     internal static HostLine Read(ReadOnlySpan<byte> buffer)
     {
-        int lineFeed = buffer[..Math.Min(buffer.Length, LongestLine)].IndexOf((byte)'\n');
+        LineStatusEnum status = LineFraming.Find(buffer, out ReadOnlySpan<byte> text, out int length, out string? reason);
 
-        if (lineFeed < 0)
+        if (status == LineStatusEnum.Incomplete)
         {
             // The default line is Incomplete.
-            return buffer.Length < LongestLine ? default : new HostLine(TooLong);
+            return default;
         }
 
-        if (lineFeed == 0 || buffer[lineFeed - 1] != '\r')
+        if (status == LineStatusEnum.Refused)
         {
-            return new HostLine(NoLineEnd);
-        }
-
-        ReadOnlySpan<byte> text = buffer[..(lineFeed - 1)];
-        int length = lineFeed + 1;
-
-        if (text.ContainsAnyExceptInRange((byte)' ', (byte)'~'))
-        {
-            return new HostLine(OutsideAscii);
-        }
-
-        if (text.IsEmpty || text[0] == ' ' || text[^1] == ' ')
-        {
-            return new HostLine(NotOneSpace);
+            return new HostLine(reason!);
         }
 
         ReadOnlySpan<byte> rest = text;
-        ReadOnlySpan<byte> verb = NextField(ref rest);
+        ReadOnlySpan<byte> verb = LineFraming.NextField(ref rest);
 
         // The <text> of an ERR line may hold spaces, so ERR checks the spaces between its own fields.
         if (verb.SequenceEqual("ERR"u8))
@@ -160,14 +136,14 @@ internal readonly ref struct HostLine
             return new HostLine(WrongFields);
         }
 
-        ReadOnlySpan<byte> idField = NextField(ref rest);
+        ReadOnlySpan<byte> idField = LineFraming.NextField(ref rest);
 
         if (fields == 2 && idField.SequenceEqual("0"u8))
         {
             return new HostLine(length, HostVerbEnum.Ok);
         }
 
-        if (!TryReadId(idField, out long id))
+        if (!ProtocolRules.IsId(idField, out long id))
         {
             return new HostLine(NotAnId);
         }
@@ -189,8 +165,8 @@ internal readonly ref struct HostLine
     // the rest of the line.
     private static HostLine ReadErr(ReadOnlySpan<byte> rest, int length)
     {
-        ReadOnlySpan<byte> idField = NextField(ref rest);
-        ReadOnlySpan<byte> codeField = NextField(ref rest);
+        ReadOnlySpan<byte> idField = LineFraming.NextField(ref rest);
+        ReadOnlySpan<byte> codeField = LineFraming.NextField(ref rest);
 
         // An empty field stands where two spaces are in a row.
         if (idField.IsEmpty || codeField.IsEmpty)
@@ -206,7 +182,7 @@ internal readonly ref struct HostLine
         long id = 0;
         bool ofConnection = idField.SequenceEqual("0"u8);
 
-        if (!ofConnection && !TryReadId(idField, out id))
+        if (!ofConnection && !ProtocolRules.IsId(idField, out id))
         {
             return new HostLine(NotAnId);
         }
@@ -234,7 +210,7 @@ internal readonly ref struct HostLine
             return new HostLine(WrongFields);
         }
 
-        if (!TryReadId(rest, out long sid))
+        if (!ProtocolRules.IsId(rest, out long sid))
         {
             return new HostLine(NotAnId);
         }
@@ -242,47 +218,7 @@ internal readonly ref struct HostLine
         return new HostLine(length, HostVerbEnum.Sig, sid);
     }
 
-    // Takes the field at the start of rest and leaves rest after the space that follows it. The field is empty when
-    // rest is empty or starts with a space.
-    private static ReadOnlySpan<byte> NextField(scoped ref ReadOnlySpan<byte> rest)
-    {
-        int space = rest.IndexOf((byte)' ');
-
-        if (space < 0)
-        {
-            ReadOnlySpan<byte> last = rest;
-            rest = default;
-
-            return last;
-        }
-
-        ReadOnlySpan<byte> field = rest[..space];
-        rest = rest[(space + 1)..];
-
-        return field;
-    }
-
-    // An id other than 0: 1 to MaxIdLength digits with no leading zero, at most 2^63-1.
-    private static bool TryReadId(ReadOnlySpan<byte> field, out long id)
-    {
-        id = 0;
-
-        if (field.Length is 0 or > ProtocolRules.MaxIdLength || field[0] == '0' || !TryReadDigits(field, out ulong value))
-        {
-            return false;
-        }
-
-        if (value > long.MaxValue)
-        {
-            return false;
-        }
-
-        id = (long)value;
-
-        return true;
-    }
-
-    // <groups>: 0, or 1 to MaxGroupsLength digits with no leading zero, at most 2^31-1.
+    // <groups>: 0, or a number of the id form at most 2^31-1, which has at most 10 digits.
     private static bool TryReadGroups(ReadOnlySpan<byte> field, out int groups)
     {
         groups = 0;
@@ -292,35 +228,12 @@ internal readonly ref struct HostLine
             return true;
         }
 
-        if (field.Length is 0 or > MaxGroupsLength || field[0] == '0' || !TryReadDigits(field, out ulong value))
-        {
-            return false;
-        }
-
-        if (value > int.MaxValue)
+        if (!ProtocolRules.IsId(field, out long value) || value > int.MaxValue)
         {
             return false;
         }
 
         groups = (int)value;
-
-        return true;
-    }
-
-    // Digits only; at most MaxIdLength of them stay below 2^64, so the value cannot overflow.
-    private static bool TryReadDigits(ReadOnlySpan<byte> field, out ulong value)
-    {
-        value = 0;
-
-        foreach (byte digit in field)
-        {
-            if (!char.IsAsciiDigit((char)digit))
-            {
-                return false;
-            }
-
-            value = (value * 10) + (ulong)(digit - '0');
-        }
 
         return true;
     }

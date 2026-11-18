@@ -3,8 +3,7 @@ namespace Moltaro.Signals.Protocol;
 // What reading the first line of a buffer found: ClientLine.Read and HostLine.Read report it.
 internal enum LineStatusEnum
 {
-    // The buffer holds no \n yet and fewer than ProtocolRules.MaxLineLength + 2 bytes: the line has not arrived in
-    // full.
+    // The buffer holds no \n yet and fewer than ProtocolRules.LineRoom bytes: the line has not arrived in full.
     Incomplete,
 
     // The line keeps the grammar of docs/protocol.md. Its length counts the \r\n, and the fields of its verb are set.
