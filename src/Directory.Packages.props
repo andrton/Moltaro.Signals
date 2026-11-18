@@ -3,4 +3,7 @@
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
   <!-- Every package version of the repository is declared here, added by the sprint that first needs it. -->
+  <ItemGroup>
+    <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.15" />
+  </ItemGroup>
 </Project>

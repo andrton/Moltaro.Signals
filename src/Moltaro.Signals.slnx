@@ -1,2 +1,4 @@
 <Solution>
+  <Project Path="Moltaro.Signals/Moltaro.Signals.csproj" />
+  <Project Path="Moltaro.Signals.Hosting/Moltaro.Signals.Hosting.csproj" />
 </Solution>
