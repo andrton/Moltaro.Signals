@@ -678,18 +678,18 @@ public sealed partial class SignalHost
             // Read before the lock is taken, because the TimeProvider is code of the application.
             DateTimeOffset now = _host._timeProvider.GetUtcNow();
             bool ending;
-            bool refused;
+            bool beforeHello;
 
             lock (_host._lock)
             {
                 ending = _ending;
-                refused = !_helloAccepted;
+                beforeHello = !_helloAccepted;
 
                 if (!ending)
                 {
-                    long from = refused ? _acceptedTicks : Volatile.Read(ref _lastReceivedTicks);
-                    var deadline = new DateTimeOffset(from, TimeSpan.Zero);
-                    TimeSpan? rest = SignalChecks.TimeUntil(deadline + _host._deadPeerTimeout, now);
+                    long silentSince = beforeHello ? _acceptedTicks : Volatile.Read(ref _lastReceivedTicks);
+                    DateTimeOffset deadline = new DateTimeOffset(silentSince, TimeSpan.Zero) + _host._deadPeerTimeout;
+                    TimeSpan? rest = SignalChecks.TimeUntil(deadline, now);
 
                     if (rest != TimeSpan.Zero)
                     {
@@ -699,7 +699,7 @@ public sealed partial class SignalHost
                         return;
                     }
 
-                    BeginEnd(refused ? ProtocolErrorEnum.Protocol : null, refused ? NoHello : null);
+                    BeginEnd(beforeHello ? ProtocolErrorEnum.Protocol : null, beforeHello ? NoHello : null);
                 }
             }
 
@@ -709,7 +709,7 @@ public sealed partial class SignalHost
             }
             else
             {
-                _ = FinishEndAsync(refused);
+                _ = FinishEndAsync(refused: beforeHello);
             }
         }
     }
