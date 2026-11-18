@@ -1,8 +1,7 @@
 # Epic 1: First release
 
 **Status:** the plan and its contract were approved by the owner on 18 November 2026 (O4);
-S1 and S2 are done; S3 is open, its protocol and internal contract approved by the owner on
-18 November 2026 (O4).
+S1, S2 and S3 are done; S4, the refactoring sprint, is next.
 
 ## Goal
 
@@ -911,7 +910,7 @@ S1 contract ── S2 signal delivery, in-process ── S3 protocol, host over 
 | --- | --- | --- | --- |
 | S1 | The public contract, the projects and the test lane | Full | Done, 18 November 2026: 3 review rounds |
 | S2 | Signal delivery and the in-process host | Full | Done, 18 November 2026: internal contract approved by the owner after 4 review rounds; sprint review 3 rounds |
-| S3 | The protocol, its codec and the host over TCP | Full | Open |
+| S3 | The protocol, its codec and the host over TCP | Full | Done, 18 November 2026: protocol and internal contract reviewed in 3 rounds and approved by the owner; sprint review 2 rounds |
 | S4 | Refactoring of the code base after S3 | Refactoring | Not started |
 | S5 | The remote client: liveness and reconnection | Full | Not started |
 | S6 | The hosting package, the samples and the first release | Full | Not started |
