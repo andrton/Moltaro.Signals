@@ -13,7 +13,8 @@ carries no data: it only says "look now", coalesces per key and group, and wakes
 waiting member of each group on each key it sets.
 
 What exists today is the **concept**, the **public contract** in code and the host inside
-its own process; the epic in [current work](docs/work/README.md) builds the rest. The [concept](docs/concept.md) is the authority for what the library guarantees: its
+its own process; the epic in [current work](docs/work/README.md) builds the rest. The
+[concept](docs/concept.md) is the authority for what the library guarantees: its
 semantics, its decisions D1–D15 and its non-goals. `README.md` says what works today; a
 feature is delivered when the README says so.
 
@@ -76,15 +77,15 @@ outside the primitive is declined, or noted as planned in the concept.
    persistence. Receivers read the facts from their own storage. Nothing in the library
    queues, orders or replays signals.
 2. **Set is idempotent and never waits for a connection.** A set while a signal is
-   pending does nothing. A client that is not connected answers `Unavailable` at once; it never blocks
-   and never queues a set for later. A connected client waits only for the host's answer,
+   pending does nothing. A client that is not connected answers `Unavailable` at once; it
+   never blocks and never queues a set for later. A connected client waits only for the host's answer,
    which carries the group count; that wait ends at the latest when a silent connection
    is declared dead.
 3. **The last set is never lost.** Every rule of delivery serves this guarantee: one
    waiting member of a group on a key receives a signal; a member is busy until its next
    wait, and a set meanwhile leaves a signal pending; a member that leaves while busy
-   hands its signal on; the first wait after subscribing or reconnecting returns `Joined`. A change that
-   weakens any of these is a defect, whatever it gains.
+   hands its signal on; the first wait after subscribing or reconnecting returns
+   `Joined`. A change that weakens any of these is a defect, whatever it gains.
 4. **The host may restart at any time.** All signal state lives in the memory of the host;
    correctness never depends on it surviving. `Joined` after a reconnect is what makes
    this safe.
@@ -176,7 +177,8 @@ Language and build:
 Organization:
 
 - One type per file, named after the type. The generic form of a type that also has a
-  non-generic one goes to `Name.Generic.cs`.
+  non-generic one goes to `Name.Generic.cs`; a nested type with a file of its own goes to
+  `Outer.Nested.cs`.
 - A folder is a namespace and one responsibility. No `Internal`, `Helpers`, `Utils` or
   other folders that collect unrelated types.
 - `internal` by default. A type is public only when it is part of the contract.

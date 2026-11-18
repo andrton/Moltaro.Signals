@@ -119,8 +119,9 @@ not committed. S6 moves the final figures into `README.md`.
 | S2 | Set of a key of one / three segments, members on one level | 181 / 328 ns, 0 bytes allocated | Reported | The same | 18 November 2026 |
 | S2 | Sets per second on 2 / 4 / 8 threads, in total | 3.3 / 2.4 / 2.8 million | Reported | The same | 18 November 2026 |
 
-Figures of one laptop with mixed core types vary between runs, by up to a factor of three
-for rates and latencies; the allocation and memory figures do not.
+Rates and latencies on one laptop with mixed core types vary between runs, by a factor of
+five in the review of S2; every judged target was met in every run. The allocation and
+memory figures do not vary.
 
 ## Open questions
 

@@ -49,6 +49,9 @@ non-goals.
 
 - [Concept](docs/concept.md): where it comes from, semantics, protocol principles,
   decisions and quality bar.
+- [How a set wakes one member of each group on a key](docs/explanations/signal-delivery.md),
+  also as an [animated page](docs/explanations/signal-delivery.html) to open from a
+  checkout.
 - [Documentation index](docs/README.md) and [current work](docs/work/README.md).
 - [How the project is built](AGENTS.md): architectural principles, code style and working
   rules, for people and coding agents.
