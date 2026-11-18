@@ -156,17 +156,7 @@ public sealed partial class SignalHost
                     // for DeadPeerTimeout at most.
                     _timer.Change(_host._deadPeerTimeout, Timeout.InfiniteTimeSpan);
 
-                    Task? flush;
-
-                    lock (_host._lock)
-                    {
-                        flush = _flush;
-                    }
-
-                    if (flush is not null)
-                    {
-                        await flush.ConfigureAwait(false);
-                    }
+                    await WhenSent().ConfigureAwait(false);
 
                     // After a shutdown a socket is closed normally, even with a receive pending.
                     try
@@ -225,6 +215,16 @@ public sealed partial class SignalHost
             }
         }
 
+        // Completes when the output written so far has been sent, with any written meanwhile, or when a send failed and
+        // ended the connection: the flush that runs, or a completed task when none does.
+        private Task WhenSent()
+        {
+            lock (_host._lock)
+            {
+                return _flush ?? Task.CompletedTask;
+            }
+        }
+
         // Receives, stores the time, and handles every complete line before it receives again, once the output is sent.
         private async Task ReadAsync()
         {
@@ -266,17 +266,7 @@ public sealed partial class SignalHost
                 _received.AsSpan(consumed, filled - consumed).CopyTo(_received);
                 filled -= consumed;
 
-                Task? flush;
-
-                lock (_host._lock)
-                {
-                    flush = _flush;
-                }
-
-                if (flush is not null)
-                {
-                    await flush.ConfigureAwait(false);
-                }
+                await WhenSent().ConfigureAwait(false);
             }
         }
 
