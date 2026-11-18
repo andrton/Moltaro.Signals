@@ -40,7 +40,23 @@ An entry is numbered `Q1`, `Q2`, … and keeps its number for good:
 
 ## Open
 
-None.
+### Q1. `Connected` and `Joined` of a subscription opened while connecting
+
+| | |
+| --- | --- |
+| **Found** | 18 November 2026, Epic 1, S1, by the test author |
+| **Question** | When a client connects, it sends the openings of its subscriptions and then reports `Connected`; a subscription returns `Joined` once the host answered its opening. Is `State` already `Connected` when such a `Joined` returns, or may the `Joined` come first? |
+| **Until answered** | The remote tests of S1 that subscribe and set on one client wait for `Connected` through `StateChanged` before they set |
+| **Decides** | The planner, by the rules of the contract; to be answered before S5 starts |
+
+### Q2. A time limit for a test run that hangs
+
+| | |
+| --- | --- |
+| **Found** | 18 November 2026, Epic 1, S1, by the test author and the independent reviewer |
+| **Question** | Many skipped tests await a wait with no bound, so a wrong implementation makes them hang instead of fail, and a CI job then runs until GitHub's default limit. Should the CI jobs or the test run have a time limit, and which? |
+| **Until answered** | No limit; the tests themselves never sleep, and a hang shows as a job that does not finish |
+| **Decides** | The coordinator, as a change of a build file; to be answered before S2 starts |
 
 ## Answered
 
