@@ -6,7 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Signal delivery has no public surface: its tests address it directly. -->
+    <!-- Signal delivery and the protocol codec have no public surface: their tests address them directly. -->
     <InternalsVisibleTo Include="Moltaro.Signals.Tests" />
   </ItemGroup>
 
