@@ -397,7 +397,7 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
             // CloseAll removed. The host writes nothing more on any of them.
             for (int index = 0; index < connections.Length; index++)
             {
-                endBegun[index] = connections[index].BeginEnd(refusal: null, text: null);
+                endBegun[index] = connections[index].BeginEnd();
             }
         }
 

@@ -114,19 +114,13 @@ public sealed partial class SignalHost
             }
         }
 
-        // Under the host's lock: begins the end of the connection, unless it has begun. A refusal writes its ERR 0 line,
-        // the last output the connection takes. True when this call began the end; the caller then runs FinishEndAsync
-        // after the lock.
-        internal bool BeginEnd(ProtocolErrorEnum? refusal, string? text)
+        // Under the host's lock: begins the end of the connection, unless it has begun; from here it takes no more lines
+        // and no more output. True when this call began the end; the caller then runs FinishEndAsync after the lock.
+        internal bool BeginEnd()
         {
             if (_ending)
             {
                 return false;
-            }
-
-            if (refusal is { } code)
-            {
-                Write(LineFormatter.Error(LineSpace(), 0, code, text!));
             }
 
             _ending = true;
@@ -356,7 +350,7 @@ public sealed partial class SignalHost
 
                 if (!accepted)
                 {
-                    BeginEnd(ProtocolErrorEnum.Token, OtherToken);
+                    BeginRefusal(ProtocolErrorEnum.Token, OtherToken);
                 }
                 else
                 {
@@ -398,7 +392,7 @@ public sealed partial class SignalHost
 
                 if (open)
                 {
-                    BeginEnd(ProtocolErrorEnum.Protocol, SidOpen);
+                    BeginRefusal(ProtocolErrorEnum.Protocol, SidOpen);
                 }
                 else if (_members.Count >= _host._maxSubscriptionsPerConnection)
                 {
@@ -450,7 +444,7 @@ public sealed partial class SignalHost
 
                 if (armed)
                 {
-                    BeginEnd(ProtocolErrorEnum.Protocol, MemberArmed);
+                    BeginRefusal(ProtocolErrorEnum.Protocol, MemberArmed);
                 }
                 else if (_host._delivery.Arm(member))
                 {
@@ -566,6 +560,21 @@ public sealed partial class SignalHost
             return true;
         }
 
+        // Under the host's lock: begins the end of the connection with a refusal, unless its end has begun. Its ERR 0 line
+        // is the last output the connection takes. True when this call began the end; the caller then runs
+        // FinishEndAsync(refused: true) after the lock.
+        private bool BeginRefusal(ProtocolErrorEnum code, string text)
+        {
+            if (!BeginEnd())
+            {
+                return false;
+            }
+
+            Write(LineFormatter.Error(LineSpace(), 0, code, text));
+
+            return true;
+        }
+
         // Refuses the connection with its ERR 0 line, unless its end has begun. Returns false, for the line that ends it.
         private bool Refuse(ProtocolErrorEnum code, string text)
         {
@@ -573,7 +582,7 @@ public sealed partial class SignalHost
 
             lock (_host._lock)
             {
-                began = BeginEnd(code, text);
+                began = BeginRefusal(code, text);
             }
 
             if (began)
@@ -591,7 +600,7 @@ public sealed partial class SignalHost
 
             lock (_host._lock)
             {
-                began = BeginEnd(refusal: null, text: null);
+                began = BeginEnd();
             }
 
             if (began)
@@ -699,7 +708,14 @@ public sealed partial class SignalHost
                         return;
                     }
 
-                    BeginEnd(beforeHello ? ProtocolErrorEnum.Protocol : null, beforeHello ? NoHello : null);
+                    if (beforeHello)
+                    {
+                        BeginRefusal(ProtocolErrorEnum.Protocol, NoHello);
+                    }
+                    else
+                    {
+                        BeginEnd();
+                    }
                 }
             }
 
