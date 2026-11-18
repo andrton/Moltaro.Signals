@@ -189,7 +189,8 @@ Naming:
 - Public types are named in the contract stage and reviewed as public API. A name that
   would be generic on its own (`SetResult`, `WaitResult`) takes the `Signal` prefix.
 - Every enum type ends with `Enum`.
-- Asynchronous methods end with `Async` and take a `CancellationToken` last.
+- Asynchronous methods end with `Async` and take a `CancellationToken` last, when a
+  caller awaits them; a private loop that ends when its socket or timer does takes none.
 - Private fields are `_camelCase`.
 - Name things for what they do for the user, not for the framework mechanism inside.
 - Words, as the concept defines them: *key*, *group*, *subscription* (one member of a

@@ -146,7 +146,7 @@ var result = await signals.SetAsync("jobs", ct);
 ## 6. Protocol
 
 UTF-8 text, one command per line, `\r\n`, debuggable with `telnet` or `nc`.
-The exact grammar is fixed by the implementation and documented in `docs/protocol.md`;
+The exact grammar is fixed in [docs/protocol.md](protocol.md), which is its authority;
 these principles are decided:
 
 | Client → host | Meaning |

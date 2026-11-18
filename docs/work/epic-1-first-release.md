@@ -1471,6 +1471,9 @@ approval of this plan, with PQ2 and PQ3 answered.
   two clarifications of the grammar of `docs/protocol.md`, from the tests step of S3 (the
   coordinator): a `0` is not an id of a client line, and the host writes it only in
   `OK 0` and in `ERR 0` with a connection code; `<text>` has no space at its start or end.
+  O12, which edited `docs/work/process.md` and this plan (the owner). From the independent
+  review of S3 (the coordinator): the naming rule of `AGENTS.md` asks a `CancellationToken`
+  only of a method a caller awaits; E1's status line names the host over TCP.
 - **Out of scope.** `SignalClient`; reconnection; explanations.
 
 ### S4 · Refactoring
