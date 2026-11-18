@@ -20,11 +20,14 @@ public sealed class WaitTests
     [Fact(Skip = SkipReason.NotImplemented)]
     public async Task The_first_wait_returns_Joined_even_when_its_deadline_has_passed()
     {
-        await using var host = new SignalHost(LoopbackOptions.Host());
+        var clock = new FakeClock();
+        SignalHostOptions options = LoopbackOptions.Host();
+        options.TimeProvider = clock;
+        await using var host = new SignalHost(options);
         using ISignalSubscription lane = host.Subscribe("jobs", "workers");
 
         SignalWaitResultEnum result = await lane.WaitAsync(
-            DateTimeOffset.UtcNow.AddSeconds(-1),
+            clock.GetUtcNow().AddSeconds(-1),
             TestContext.Current.CancellationToken);
 
         Assert.Equal(SignalWaitResultEnum.Joined, result);
@@ -45,6 +48,9 @@ public sealed class WaitTests
         DateTimeOffset deadline = clock.GetUtcNow().AddSeconds(5);
 
         ValueTask<SignalWaitResultEnum> wait = lane.WaitAsync(deadline, cancellationToken);
+
+        Assert.False(wait.IsCompleted);
+
         await clock.WaitForTimerAsync(deadline, cancellationToken);
 
         Assert.False(wait.IsCompleted);
@@ -63,27 +69,33 @@ public sealed class WaitTests
     public async Task A_wait_whose_deadline_has_passed_returns_DeadlineReached_at_once_and_changes_nothing()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
-        await using var host = new SignalHost(LoopbackOptions.Host());
+        var clock = new FakeClock();
+        SignalHostOptions options = LoopbackOptions.Host();
+        options.TimeProvider = clock;
+        await using var host = new SignalHost(options);
         using ISignalSubscription lane = host.Subscribe("jobs", "workers");
         await lane.WaitAsync(until: null, cancellationToken);
         await host.SetAsync("jobs", cancellationToken);
 
-        SignalWaitResultEnum result = await lane.WaitAsync(DateTimeOffset.UtcNow.AddSeconds(-1), cancellationToken);
+        SignalWaitResultEnum result = await lane.WaitAsync(clock.GetUtcNow().AddSeconds(-1), cancellationToken);
 
         Assert.Equal(SignalWaitResultEnum.DeadlineReached, result);
         Assert.Equal(SignalWaitResultEnum.Signaled, await lane.WaitAsync(until: null, cancellationToken));
     }
 
-    // The system clock refuses a timer longer than its longest one, so a deadline taken as one would fail the wait.
+    // A TimeProvider refuses a timer longer than its longest one, so a deadline taken as one would fail the wait.
     [Fact(Skip = SkipReason.NotImplemented)]
     public async Task A_deadline_further_away_than_the_longest_timer_counts_as_none()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
-        await using var host = new SignalHost(LoopbackOptions.Host());
+        var clock = new FakeClock();
+        SignalHostOptions options = LoopbackOptions.Host();
+        options.TimeProvider = clock;
+        await using var host = new SignalHost(options);
         using ISignalSubscription lane = host.Subscribe("jobs", "workers");
         await lane.WaitAsync(until: null, cancellationToken);
 
-        ValueTask<SignalWaitResultEnum> wait = lane.WaitAsync(DateTimeOffset.UtcNow.AddDays(100), cancellationToken);
+        ValueTask<SignalWaitResultEnum> wait = lane.WaitAsync(clock.GetUtcNow().AddDays(100), cancellationToken);
         await host.SetAsync("jobs", cancellationToken);
 
         Assert.Equal(SignalWaitResultEnum.Signaled, await wait);
