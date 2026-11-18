@@ -82,4 +82,38 @@ public sealed class HostLifetimeTests
         await second;
         await Assert.ThrowsAsync<ObjectDisposedException>(async () => await wait);
     }
+
+    // The listener's MeasurementsCompleted runs inside the first dispose, when the host disposes its meter, and throws
+    // once, so its listener can still be disposed at the end.
+    [Fact]
+    public async Task A_second_dispose_completes_when_a_meter_listener_threw_inside_the_first()
+    {
+        var host = new SignalHost(LoopbackOptions.Host());
+        bool thrown = false;
+
+        using var listener = new MeterListener
+        {
+            InstrumentPublished = (instrument, meterListener) =>
+            {
+                if (ReferenceEquals(instrument.Meter.Scope, host))
+                {
+                    meterListener.EnableMeasurementEvents(instrument);
+                }
+            },
+            MeasurementsCompleted = (instrument, state) =>
+            {
+                if (!thrown)
+                {
+                    thrown = true;
+
+                    throw new InvalidOperationException("The listener fails.");
+                }
+            },
+        };
+        listener.Start();
+
+        Assert.Throws<InvalidOperationException>(() => host.DisposeAsync());
+
+        await host.DisposeAsync();
+    }
 }

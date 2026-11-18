@@ -322,8 +322,16 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
             member = next;
         }
 
-        _meter.Dispose();
-        disposal.SetResult();
+        // Disposing the meter runs the MeasurementsCompleted callbacks of the application's listeners, which may throw:
+        // the first call then reports that exception, and the later calls complete all the same.
+        try
+        {
+            _meter.Dispose();
+        }
+        finally
+        {
+            disposal.SetResult();
+        }
 
         return new ValueTask(disposal.Task);
     }
