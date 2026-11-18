@@ -43,7 +43,7 @@ options state (decision O5).
 | O1 | **Standing permission for this epic.** The coordinator has, for this epic, the standing permission that [branches and releases](branches.md#who-does-what), "Who does what", describes, within the limits it names there |
 | O2 | **Few sprints, the contract first.** The library is small, so the epic is not split into many sprints. The plan comes first, and with it the contract: the whole public interface of both packages is written out exactly in this plan, every public type and member with its signature and what it guarantees, because it is meant to stay. Later it changes only in individual cases, through the owner. The plan therefore has one contract stage that covers the entire public surface, and a sprint is split only where one agent and one review could not carry it |
 | O3 | **Explanations in two forms.** The documentation that explains the architecture and how the library works, small as it is, is written both as Markdown and as HTML. In the main cases the HTML version is animated, so that a person can easily watch how it works. The rule this gives is in `AGENTS.md`, "Documentation"; requirement R15 names the explanations of this epic |
-| O4 | **Every contract is agreed with the owner before it is committed**: the public contract in this plan, any change of it, and the contract a sprint puts into code |
+| O4 | **Every contract is agreed with the owner before it is committed**: the public contract in this plan, any change of it, and the contract a sprint puts into code; narrowed by O12 |
 | O5 | **A refusal is one rule, and flood resistance is out of scope.** A refusal that closes is answered with the `ERR` line, then the connection is closed normally, with no closing phase, draining or bound beyond what the options state. Refusals raise no notification and write no log line. Resistance to denial of service beyond the stated limits is out of scope for v1, by D9 |
 | O6 | **Remove everything that is not needed.** No `Refused` state, no name-length option, no refusal exception, no host connection event, no refusal counter, no ordered sids, no allocation assertions, and the smaller cuts the contract below reflects |
 | O7 | **Hierarchical keys, ancestors only.** A key is a path of segments separated by `.`. A set of a key also sets each of its ancestors: a set of `entity.contacts.42` acts as a set of `entity.contacts.42`, `entity.contacts` and `entity`, each by rule 1, for every (key, group) among these keys that has members. No wildcards, no setting of descendants; anything more is a separate decision later |
@@ -51,6 +51,7 @@ options state (decision O5).
 | O9 | **Three contract wordings.** The rules act per (key, group); an attempt that ends without the host's answer to its `HELLO` raises no `StateChanged`; the client logs a refused attempt in its Warning line, with no Error line |
 | O10 | **O1 covers this epic's documents too.** The standing permission of O1 also covers the pull requests of this epic's documents — the plan, the contracts of later stages, light-track changes — once they are reviewed and, where the process asks for it, approved by the owner. It never covers the release change, which stays with the owner, or what O1 excludes |
 | O11 | **The one term is signal.** A set gives each group with members on a key a *signal*; one that no member has taken yet is *pending* (at most one per (key, group)); a busy member that leaves *hands its signal on*. "Event" for that state, "raised", "re-raise" and "auto-reset event" leave the documentation, the contract and the code |
+| O12 | **Narrows O4.** The owner agrees only the public contract before it is committed, and any change of it: the public API of both packages, the protocol (`docs/protocol.md`), the metric names and the log categories. Internal contracts — the types the tests address that are not public — are approved by the coordinator after the independent review. The owner arbitrates what the coordinator cannot settle and decides any change of a guarantee or a decision of the concept |
 
 ## Requirements
 
@@ -836,8 +837,9 @@ reason, and it goes to the owner as a change of the contract.
   requires, answering the questions their brief names. The internal types their tests
   address are then written into the brief by the planner, with what the study taught;
   an independent reviewer reviews them until no P1, P2 or P3 finding is left, and the
-  owner approves them before the contract step. The public contract these sprints
-  implement is not reopened by the study.
+  coordinator approves them before the contract step (O12). The owner sees them only when
+  the study shows that the public contract or the protocol has to change. The public
+  contract these sprints implement is not reopened by the study.
 - **Studies.** The implementer of the sprint carries out its study, before any code.
   Two to four established systems per study, read in their source at pinned
   commits, the licence checked first by the rule of the process; Redis is not opened
@@ -1503,9 +1505,9 @@ approval of this plan, with PQ2 and PQ3 answered.
   - *Internal:* none is expected. The tests use the public API, and raw protocol lines
     for a test host that misbehaves on purpose or holds back its answers. If the study
     proposes internal types that tests should address, the planner writes them into this
-    brief and the owner agrees to them (O4) before the contract step; the contract
-    author's work is then shown to the owner and committed only after approval. Without
-    such types the sprint has no contract step.
+    brief and the coordinator approves them after the independent review (O12) before
+    the contract step; the contract author's work is then committed after the
+    coordinator's approval. Without such types the sprint has no contract step.
 - **Study.** Sources, for example: the connection, reconnection and ping handling of the
   NATS .NET client (Apache-2.0); the heartbeats and connection events of
   StackExchange.Redis (MIT); how Microsoft.Data.SqlClient (MIT) confirms the cancellation
