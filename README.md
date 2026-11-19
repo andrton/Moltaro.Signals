@@ -58,6 +58,7 @@ A process elsewhere registers a client of that host instead:
 ```csharp
 builder.Services.AddSignalClient(options =>
 {
+    // The sample runs the host in this process; a real client names the host's address from its configuration.
     options.HostEndPoint = signalHost.LocalEndPoint;
     options.Token = "sample-token";
 });
@@ -81,6 +82,7 @@ internal sealed class JobWorker(ISignals signals, JobStore store, IHostApplicati
             while (store.TryClaim(out string? job))
             {
                 Console.WriteLine($"The worker ({result}) processes {job}.");
+                // Only so that the sample ends; a real worker keeps its loop running.
                 lifetime.StopApplication();
             }
         }
@@ -95,7 +97,7 @@ A publisher sets the key after its writing transaction has committed; `Applied` 
 SignalSetResult result = await app.Services.GetRequiredService<ISignals>().SetAsync("jobs", cancellationToken);
 ```
 
-A host in a process of its own needs no more than this:
+A host in a process of its own runs this method until Ctrl+C:
 
 ```csharp
 public static async Task RunAsync(IPEndPoint listenEndPoint, CancellationToken cancellationToken)
@@ -163,14 +165,14 @@ text is not part of the contract.
 Measured with the [measurement program](https://github.com/andrton/Moltaro.Signals/tree/main/src/Moltaro.Signals.Measurements)
 on an Intel Core i9-13900H laptop (20 logical processors), Windows 10.0.26300, .NET 10.0.15,
 Release build. Rates and latencies on this machine vary between runs by up to a factor of
-five; allocations and memory do not.
+five, and the maxima more; allocations do not, and retained memory by a few bytes.
 
 | Scenario | Figure | Target |
 | --- | --- | --- |
-| In-process set to wake | p50 1.4 µs, p99 4.3 µs | p50 under 50 µs |
+| In-process set to wake | p50 1.4 µs, p99 4.3 µs, maximum 180 µs | p50 under 50 µs |
 | Sets per second on one thread, most of them coalesced | 10.4 million | At least 100,000 |
 | Memory retained per (key, group) / per subscription | 190 / 142 bytes, flat over a million sets | Grows with keys × groups and subscriptions only |
-| Loopback set to wake, from one client to a member on another | p50 125 µs, p99 422 µs | p99 under 1 ms |
+| Loopback set to wake, from one client to a member on another | p50 125 µs, p99 422 µs, maximum 17.7 ms | p99 under 1 ms |
 | Allocated per in-process wake / per set over loopback | 96 / 0.7 bytes | Reported |
 | Sets per second from one client with 64 concurrent callers | 259,000 | Reported |
 

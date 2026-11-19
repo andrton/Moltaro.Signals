@@ -126,12 +126,16 @@ not committed. S6 moves the final figures into `README.md`.
 | S5 | Allocated per remote wake, with its set and the next wait, the host's included | 768 bytes | Reported | The same | 19 November 2026 |
 | S5 | Sets per second from one client with 1 / 8 / 64 concurrent callers | 21,000 / 63,000 / 521,000 | Reported | The same | 19 November 2026 |
 | S5 | Allocated per remote set with 1 / 8 / 64 callers | 384 / 164 / 106 bytes | Reported | The same | 19 November 2026 |
-| S6 | Every scenario on the final build: in-process set to wake | p50 1.4 µs, p99 4.3 µs | p50 under 50 µs: met | The same | 19 November 2026 |
+| S6 | Every scenario on the final build: in-process set to wake | p50 1.4 µs, p99 4.3 µs, maximum 180 µs | p50 under 50 µs: met | The same | 19 November 2026 |
 | S6 | Final build: sets per second on one thread | 10.4 million | At least 100,000: met | The same | 19 November 2026 |
 | S6 | Final build: retained per (key, group) / per subscription, change over 1,000,000 sets | 190 / 142 bytes, 0 bytes | Flat: met | The same | 19 November 2026 |
-| S6 | Final build: loopback set to wake | p50 125 µs, p99 422 µs | p99 under 1 ms: met | The same | 19 November 2026 |
+| S6 | Final build: loopback set to wake | p50 125 µs, p99 422 µs, maximum 17.7 ms | p99 under 1 ms: met | The same | 19 November 2026 |
 | S6 | Final build: allocated per wake / per wait plain and with both / per set over loopback / per remote wake | 96 / 96 and 232 / 0.7 / 768 bytes | Reported | The same | 19 November 2026 |
 | S6 | Final build: sets per second from one client with 1 / 8 / 64 callers | 9,000 / 44,000 / 259,000 | Reported | The same | 19 November 2026 |
+| S6 | Final build: allocated per remote set with 1 / 8 / 64 callers | 384 / 161 / 105 bytes | Reported | The same | 19 November 2026 |
+| S6 | Final build: set of a key of one / three segments, members on one level | 94 / 156 ns, 0 bytes allocated | Reported | The same | 19 November 2026 |
+| S6 | Final build: sets per second on 2 / 4 / 8 threads, in total | 4.7 / 3.7 / 3.5 million | Reported | The same | 19 November 2026 |
+| S6 | Final build: `SET` lines applied per second from one connection, pipelined over loopback | 1.22 million | Reported | The same | 19 November 2026 |
 
 Rates and latencies on one laptop with mixed core types vary between runs, by a factor of
 five in the review of S2; every judged target was met in every run. The allocation and
@@ -661,7 +665,10 @@ public static class SignalServiceCollectionExtensions
 ```
 
 A container serves one `ISignals`: the host of the process, or a client of a host
-elsewhere; registering both leaves the last one. `SignalHost` and `SignalClient` are only
+elsewhere. Registering both, or one of them twice, in one container is not supported:
+`ISignals` then resolves to the one registered last. The `HostEndPoint` of the client's
+log lines is the one its options name, as configured: a name is not resolved for them.
+`SignalHost` and `SignalClient` are only
 `IAsyncDisposable`, so a container that resolved one has to be disposed asynchronously,
 as the generic host does.
 
@@ -1668,6 +1675,12 @@ approval of this plan, with PQ2 and PQ3 answered.
 - **A sample of S1 to complete** (from the review of S1). The standalone host becomes one
   piece a reader can copy, still about 30 lines, its Ctrl+C wiring included; today that
   wiring sits in `Program.cs`, apart from `StandaloneHost.cs`.
+- **Small changes made on this branch** (`process.md`, "Small changes during a sprint"):
+  two decided sentences of the documentation of `SignalServiceCollectionExtensions`, from
+  the tests step of S6 (the coordinator): registering both, or one of them twice, in one
+  container is not supported, and `ISignals` then resolves to the one registered last;
+  the `HostEndPoint` of the client's log lines is the configured one, not resolved. Both
+  state limitations; neither changes behavior.
 - **Out of scope.** Configuration binding helpers, health checks, anything of concept §9.
 
 ## The first release
