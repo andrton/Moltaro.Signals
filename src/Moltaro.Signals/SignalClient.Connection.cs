@@ -357,13 +357,13 @@ public sealed partial class SignalClient
             {
                 HostVerbEnum.Ok when line.Groups is { } groups => HandleSetAnswer(line.Id, groups),
                 HostVerbEnum.Ok when line.Id == 0 => Close(NotOutstanding),
-                HostVerbEnum.Ok => HandleSubscriptionAnswer(line.Id),
                 HostVerbEnum.Err when line.Id == 0 => Refused(line),
-                HostVerbEnum.Err => HandleRefusedSubscription(line.Id, line.Text),
-                HostVerbEnum.Sig => HandleSignal(line.Id),
 
                 // PONG: traffic, which the receive has counted.
-                _ => true,
+                HostVerbEnum.Pong => true,
+
+                // OK <sid>, ERR <sid> and SIG <sid>.
+                _ => HandleMemberLine(line),
             };
         }
 
@@ -456,9 +456,15 @@ public sealed partial class SignalClient
             return true;
         }
 
-        // OK <sid>: the answer to the SUB or the UNWAIT of the member. A <sid> the client has closed is ignored.
-        private bool HandleSubscriptionAnswer(long sid)
+        // A line for one member: OK <sid>, the answer to its SUB or its UNWAIT; ERR <sid> subscriptions <text>, the refusal
+        // of its SUB; or SIG <sid>. A <sid> the client has closed is ignored; the host handed the signal of a SIG for it on
+        // when it removed the member. A line for an open member with nothing of it outstanding breaks the protocol and
+        // closes the connection.
+        private bool HandleMemberLine(HostLine line)
         {
+            long sid = line.Id;
+            bool refused = line.Verb == HostVerbEnum.Err;
+            string? refusal = refused ? Encoding.ASCII.GetString(line.Text) : null;
             RemoteSubscription? subscription;
             bool answered = true;
             bool complete = false;
@@ -472,80 +478,18 @@ public sealed partial class SignalClient
 
                 if (_client._subscriptions.TryGetValue(sid, out subscription))
                 {
-                    answered = subscription.Answer(out complete);
-                }
-            }
+                    answered = line.Verb switch
+                    {
+                        HostVerbEnum.Ok => subscription.Answer(out complete),
+                        HostVerbEnum.Err => subscription.Refuse(refusal!, out complete),
+                        _ => subscription.Signal(out complete),
+                    };
 
-            if (!answered)
-            {
-                return Close(NotOutstanding);
-            }
-
-            if (complete)
-            {
-                subscription!.CompleteWait();
-            }
-
-            return true;
-        }
-
-        // ERR <sid> subscriptions <text>: the host refused to open the member, which is closed for good. A <sid> the
-        // client has closed is ignored.
-        private bool HandleRefusedSubscription(long sid, ReadOnlySpan<byte> text)
-        {
-            string refusal = Encoding.ASCII.GetString(text);
-            RemoteSubscription? subscription;
-            bool answered = true;
-            bool complete = false;
-
-            lock (_client._lock)
-            {
-                if (_ending)
-                {
-                    return false;
-                }
-
-                if (_client._subscriptions.TryGetValue(sid, out subscription))
-                {
-                    answered = subscription.Refuse(refusal, out complete);
-
-                    if (answered)
+                    // A refused member is closed for good.
+                    if (answered && refused)
                     {
                         _client._subscriptions.Remove(sid);
                     }
-                }
-            }
-
-            if (!answered)
-            {
-                return Close(NotOutstanding);
-            }
-
-            if (complete)
-            {
-                subscription!.CompleteWait();
-            }
-
-            return true;
-        }
-
-        // SIG <sid>. A <sid> the client has closed is ignored: the host handed that signal on when it removed the member.
-        private bool HandleSignal(long sid)
-        {
-            RemoteSubscription? subscription;
-            bool answered = true;
-            bool complete = false;
-
-            lock (_client._lock)
-            {
-                if (_ending)
-                {
-                    return false;
-                }
-
-                if (_client._subscriptions.TryGetValue(sid, out subscription))
-                {
-                    answered = subscription.Signal(out complete);
                 }
             }
 
