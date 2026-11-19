@@ -7,7 +7,7 @@ namespace Moltaro.Signals.Hosting.Tests.GenericHost;
 // AddSignalHost and AddSignalClient in one container, which serves one ISignals.
 public sealed class HostAndClientRegistrationTests
 {
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Registering_both_leaves_ISignals_resolving_to_the_one_registered_last()
     {
         // The second call is chained on the collection the first returned, as an application writes it.

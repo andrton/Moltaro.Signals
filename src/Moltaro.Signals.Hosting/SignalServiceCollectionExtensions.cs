@@ -8,14 +8,16 @@ namespace Moltaro.Signals.Hosting;
 /// </summary>
 /// <remarks>
 /// <para>
-/// A container serves one <see cref="ISignals"/>; registering both leaves the last one. <see cref="SignalHost"/>
-/// and <see cref="SignalClient"/> are only <see cref="IAsyncDisposable"/>, so a container that resolved one has to
-/// be disposed asynchronously, as the generic host does.
+/// A container serves one <see cref="ISignals"/>. Registering both, or one of them twice, in one container is not
+/// supported: <see cref="ISignals"/> then resolves to the one registered last. <see cref="SignalHost"/> and
+/// <see cref="SignalClient"/> are only <see cref="IAsyncDisposable"/>, so a container that resolved one has to be
+/// disposed asynchronously, as the generic host does.
 /// </para>
 /// <para>
 /// The hosted services write log lines through the container's
 /// <see cref="Microsoft.Extensions.Logging.ILoggerFactory"/>, with the category of the type that reports. The named
-/// values are structured properties; the message text is not part of the contract.
+/// values are structured properties; the message text is not part of the contract. The <c>HostEndPoint</c> of the
+/// client's lines is the one its options name, as configured: a name is not resolved for them.
 /// </para>
 /// <list type="table">
 /// <listheader>
@@ -70,7 +72,20 @@ public static class SignalServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configure);
 
-        throw new NotSupportedException();
+        services.AddSingleton(_ =>
+        {
+            var options = new SignalHostOptions();
+            configure(options);
+
+            return new SignalHost(options);
+        });
+
+        // The same object. Once ISignals has been resolved, the container disposes the host for each of the two
+        // registrations; the second DisposeAsync completes with the first.
+        services.AddSingleton<ISignals>(provider => provider.GetRequiredService<SignalHost>());
+        services.AddHostedService(provider => new SignalHostStarter(provider));
+
+        return services;
     }
 
     /// <summary>
@@ -82,8 +97,9 @@ public static class SignalServiceCollectionExtensions
     /// <returns><paramref name="services"/>.</returns>
     /// <remarks>
     /// The <see cref="Microsoft.Extensions.Hosting.IHostedService.StartAsync"/> of the hosted service resolves the
-    /// client, attaches its log lines and calls <see cref="SignalClient.Start"/>. The container disposes the client.
-    /// Wrong options throw when the client is resolved, as its constructor says.
+    /// client, attaches its log lines and calls <see cref="SignalClient.Start"/>. The hosted service does nothing when
+    /// the application stops: the container disposes the client. Wrong options throw when the client is resolved, as
+    /// its constructor says.
     /// </remarks>
     /// <exception cref="ArgumentNullException">
     /// Thrown by the call: <paramref name="services"/> or <paramref name="configure"/> is <see langword="null"/>.
@@ -93,6 +109,19 @@ public static class SignalServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
         ArgumentNullException.ThrowIfNull(configure);
 
-        throw new NotSupportedException();
+        services.AddSingleton(_ =>
+        {
+            var options = new SignalClientOptions();
+            configure(options);
+
+            return new ConfiguredClientOptions(options);
+        });
+        services.AddSingleton(provider => new SignalClient(provider.GetRequiredService<ConfiguredClientOptions>().Options));
+
+        // The same object, disposed by the container as the host of AddSignalHost is.
+        services.AddSingleton<ISignals>(provider => provider.GetRequiredService<SignalClient>());
+        services.AddHostedService(provider => new SignalClientStarter(provider));
+
+        return services;
     }
 }

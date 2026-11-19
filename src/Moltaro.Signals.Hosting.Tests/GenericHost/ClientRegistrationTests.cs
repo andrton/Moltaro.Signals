@@ -12,7 +12,7 @@ public sealed class ClientRegistrationTests
 {
     private const string ClientCategory = "Moltaro.Signals.SignalClient";
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task ISignals_resolves_to_the_registered_client()
     {
         var services = new ServiceCollection();
@@ -26,7 +26,7 @@ public sealed class ClientRegistrationTests
         Assert.Same(provider.GetRequiredService<SignalClient>(), provider.GetRequiredService<ISignals>());
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Configure_runs_when_the_client_is_first_resolved_and_wrong_options_throw_there()
     {
         var services = new ServiceCollection();
@@ -46,7 +46,7 @@ public sealed class ClientRegistrationTests
         Assert.True(configured);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_client_connects_when_the_application_starts()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -62,7 +62,7 @@ public sealed class ClientRegistrationTests
         await app.StopAsync(cancellationToken);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_client_outlives_the_hosted_services_and_is_disposed_with_the_container()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -84,7 +84,7 @@ public sealed class ClientRegistrationTests
         Assert.Throws<ObjectDisposedException>(() => client.Subscribe("jobs", "workers"));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_client_writes_an_Information_line_with_HostEndPoint_when_it_connects()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -103,7 +103,7 @@ public sealed class ClientRegistrationTests
         await app.StopAsync(cancellationToken);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_client_writes_a_Warning_line_with_HostEndPoint_and_Reason_when_its_connection_ends()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -126,7 +126,7 @@ public sealed class ClientRegistrationTests
         await app.StopAsync(cancellationToken);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_refused_attempt_is_written_as_a_Warning_line_whose_Reason_begins_with_the_code()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
