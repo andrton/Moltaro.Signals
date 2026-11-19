@@ -33,7 +33,7 @@ internal sealed class SignalDelivery
     // The number of keys it holds.
     internal int KeyCount => _keys.Count;
 
-    // The number of (key, group) pairs it holds, counted when it is asked for: only the tests of rule 3 ask.
+    // The number of (key, group) pairs it holds, counted when it is asked for: only tests ask.
     internal int GroupCount => _keys.Values.Sum(groups => groups.Count);
 
     // Adds a new member of a group on a key. The member is Busy, because joining counts as a signal (rule 6). The

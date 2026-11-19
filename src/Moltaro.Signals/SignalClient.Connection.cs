@@ -610,6 +610,5 @@ public sealed partial class SignalClient
 
             return true;
         }
-
     }
 }
