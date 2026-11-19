@@ -126,6 +126,12 @@ not committed. S6 moves the final figures into `README.md`.
 | S5 | Allocated per remote wake, with its set and the next wait, the host's included | 768 bytes | Reported | The same | 19 November 2026 |
 | S5 | Sets per second from one client with 1 / 8 / 64 concurrent callers | 21,000 / 63,000 / 521,000 | Reported | The same | 19 November 2026 |
 | S5 | Allocated per remote set with 1 / 8 / 64 callers | 384 / 164 / 106 bytes | Reported | The same | 19 November 2026 |
+| S6 | Every scenario on the final build: in-process set to wake | p50 1.4 µs, p99 4.3 µs | p50 under 50 µs: met | The same | 19 November 2026 |
+| S6 | Final build: sets per second on one thread | 10.4 million | At least 100,000: met | The same | 19 November 2026 |
+| S6 | Final build: retained per (key, group) / per subscription, change over 1,000,000 sets | 190 / 142 bytes, 0 bytes | Flat: met | The same | 19 November 2026 |
+| S6 | Final build: loopback set to wake | p50 125 µs, p99 422 µs | p99 under 1 ms: met | The same | 19 November 2026 |
+| S6 | Final build: allocated per wake / per wait plain and with both / per set over loopback / per remote wake | 96 / 96 and 232 / 0.7 / 768 bytes | Reported | The same | 19 November 2026 |
+| S6 | Final build: sets per second from one client with 1 / 8 / 64 callers | 9,000 / 44,000 / 259,000 | Reported | The same | 19 November 2026 |
 
 Rates and latencies on one laptop with mixed core types vary between runs, by a factor of
 five in the review of S2; every judged target was met in every run. The allocation and

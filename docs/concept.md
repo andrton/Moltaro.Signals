@@ -1,7 +1,7 @@
 # Moltaro.Signals — concept
 
-Status: agreed concept, 18 November 2026. The host and the client exist in code; the
-hosting package does not yet. [README.md](../README.md) says what works today.
+Status: agreed concept, 18 November 2026. The library it describes is built: the host, the
+client and the hosting package. [README.md](../README.md) says what works today.
 
 ## 1. Where it comes from
 

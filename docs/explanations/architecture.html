@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How the library is built — Moltaro.Signals</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c2330; --muted: #5d6878; --line: #c9d1dc; --panel: #f4f6f9;
+    --link: #1f6feb; --sig: #d97706; --busy: #1f6feb; --busy-bg: #e6f0ff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161c; --fg: #e3e8ef; --muted: #98a4b3; --line: #3a4350; --panel: #1b212a;
+      --link: #6cb0ff; --sig: #f0a55a; --busy: #6cb0ff; --busy-bg: #16263f;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 940px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 1.2rem; margin: 40px 0 8px; }
+  p { margin: 8px 0; }
+  ul, ol { padding-left: 24px; margin: 8px 0; }
+  li { margin: 4px 0; }
+  a { color: var(--link); }
+  code { font: .9em ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .lead { color: var(--muted); }
+  .status { border-left: 3px solid var(--sig); background: var(--panel); padding: 10px 14px; margin: 18px 0; font-size: .93rem; }
+  blockquote { margin: 16px 0; padding: 10px 16px; border-left: 3px solid var(--busy); background: var(--panel); font-size: 1.05rem; }
+  figure { margin: 20px 0 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  svg { display: block; width: 100%; height: auto; background: var(--panel); }
+
+  /* drawing */
+  text { fill: var(--fg); font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .small { font-size: 11.5px; fill: var(--muted); }
+  .head { font-size: 12px; fill: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .mono { font: 13px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .name { font-weight: 700; font-size: 15px; }
+  .b { font-weight: 700; }
+  .box { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; }
+  .box.lib { stroke: var(--busy); stroke-width: 1.6; }
+  .iface { font: 600 12px ui-monospace, "Cascadia Mono", Consolas, monospace; fill: var(--busy); }
+  .dep { stroke: var(--muted); stroke-width: 1.5; fill: none; }
+  .tip { fill: var(--muted); }
+  .conn { stroke: var(--muted); stroke-width: 3; }
+  .wire { font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .rule { stroke: var(--line); stroke-width: 1; stroke-dasharray: 4 4; }
+</style>
+</head>
+<body>
+<main>
+  <h1>How the library is built</h1>
+  <p class="lead">Moltaro.Signals · an explanation for a developer who uses the library, not a
+    specification. The rules are <a href="../concept.md#2-what-it-is">concept §2, “What it is”</a>,
+    <a href="../concept.md#5-hosting">concept §5, “Hosting”</a> and the wire format in
+    <a href="../protocol.md">docs/protocol.md</a>. The same text without the figure is in
+    <a href="architecture.md">architecture.md</a>. How the library works at run time is the subject of
+    the other two explanations, <a href="signal-delivery.html">How a set wakes one member of each group
+    on a key</a> and <a href="connection-loss.html">Why nothing is lost when a connection drops or the
+    host restarts</a>.</p>
+  <p class="status"><b>Status, 19 November 2026.</b> Built. Sprints S2 and S3 of the first epic built
+    the host, <code>SignalHost</code>, inside its own process and over TCP; sprint S5 built the client,
+    <code>SignalClient</code>; sprint S6 built the hosting package,
+    <code>Moltaro.Signals.Hosting</code>.</p>
+
+  <h2>The idea</h2>
+  <blockquote>One process embeds the host, which keeps every signal in its memory. Every other process
+    reaches it through a client, over one TCP connection that carries lines of text. Code in either
+    place uses the same interface, <code>ISignals</code>, by the same rules.</blockquote>
+  <p>There is nothing else to run: no broker and no server of its own. The library is two packages: one
+    that holds all of it and depends on nothing outside .NET, and a thin one that registers it in a .NET
+    generic host.</p>
+
+  <h2>At a glance</h2>
+  <p>The figure has two halves. The upper half shows one deployment at run time: the host process, and
+    two client processes with one connection each, with lines of the protocol on each connection. The
+    lower half shows the two packages and the folders of <code>Moltaro.Signals</code>; an arrow points
+    from a part to the part it uses.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 656" role="img" aria-label="Upper half: the host process, whose application code uses SignalHost as ISignals with no socket, and two client processes, API and Worker, each using a SignalClient as ISignals over one TCP connection to the host that carries lines of the protocol. Lower half: the package Moltaro.Signals, whose root holds the public contract and the transport and uses the folders Delivery and Protocol, which use neither the root nor each other; and the package Moltaro.Signals.Hosting, which uses Moltaro.Signals and the hosting abstractions of .NET.">
+      <defs>
+        <marker id="tip" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <path class="tip" d="M0 0 L10 5 L0 10 z"/>
+        </marker>
+      </defs>
+
+      <!-- upper half: one deployment at run time -->
+      <text class="head" x="20" y="32">Host process</text>
+      <rect class="box" x="20" y="40" width="350" height="240" rx="10"/>
+      <text class="small" x="36" y="62">the process that owns the background work</text>
+
+      <rect class="box" x="36" y="76" width="94" height="190" rx="8"/>
+      <text x="83" y="156" text-anchor="middle">Application</text>
+      <text x="83" y="173" text-anchor="middle">code</text>
+      <text class="small" x="83" y="198" text-anchor="middle">workers and</text>
+      <text class="small" x="83" y="214" text-anchor="middle">publishers</text>
+
+      <path class="dep" marker-end="url(#tip)" d="M130 171 L196 171"/>
+      <text class="iface" x="163" y="162" text-anchor="middle">ISignals</text>
+      <text class="small" x="163" y="190" text-anchor="middle">no socket</text>
+
+      <rect class="box lib" x="198" y="76" width="156" height="190" rx="8"/>
+      <text class="name" x="212" y="100">SignalHost</text>
+      <text class="small" x="212" y="126">keeps the signals</text>
+      <text class="small" x="212" y="142">in memory only</text>
+      <text class="small" x="212" y="166">listens on a TCP port</text>
+      <text class="small" x="212" y="190">one per deployment</text>
+
+      <text class="head" x="540" y="32">Client processes</text>
+
+      <rect class="box" x="540" y="40" width="340" height="110" rx="10"/>
+      <text class="name" x="556" y="62">API</text>
+      <rect class="box lib" x="556" y="72" width="148" height="68" rx="8"/>
+      <text class="name" x="570" y="96">SignalClient</text>
+      <text class="small" x="570" y="116">one connection</text>
+      <text class="small" x="570" y="132">reconnects by itself</text>
+      <path class="dep" marker-end="url(#tip)" d="M772 106 L706 106"/>
+      <text class="iface" x="739" y="97" text-anchor="middle">ISignals</text>
+      <rect class="box" x="772" y="72" width="92" height="68" rx="8"/>
+      <text x="818" y="96" text-anchor="middle">Application</text>
+      <text x="818" y="112" text-anchor="middle">code</text>
+      <text class="small" x="818" y="130" text-anchor="middle">sets orders</text>
+
+      <rect class="box" x="540" y="170" width="340" height="110" rx="10"/>
+      <text class="name" x="556" y="192">Worker</text>
+      <rect class="box lib" x="556" y="202" width="148" height="68" rx="8"/>
+      <text class="name" x="570" y="226">SignalClient</text>
+      <text class="small" x="570" y="246">one connection,</text>
+      <text class="small" x="570" y="262">shared by both lanes</text>
+      <path class="dep" marker-end="url(#tip)" d="M772 236 L706 236"/>
+      <text class="iface" x="739" y="227" text-anchor="middle">ISignals</text>
+      <rect class="box" x="772" y="202" width="92" height="68" rx="8"/>
+      <text x="818" y="226" text-anchor="middle">Application</text>
+      <text x="818" y="242" text-anchor="middle">code</text>
+      <text class="small" x="818" y="260" text-anchor="middle">two lanes</text>
+
+      <!-- the connections, with lines of the protocol; the host is on the left -->
+      <line class="conn" x1="354" y1="106" x2="556" y2="106"/>
+      <text class="wire" x="455" y="96" text-anchor="middle">← SET 1 orders</text>
+      <text class="wire" x="455" y="124" text-anchor="middle">OK 1 1 →</text>
+      <line class="conn" x1="354" y1="236" x2="556" y2="236"/>
+      <text class="wire" x="455" y="226" text-anchor="middle">← WAIT 1</text>
+      <text class="wire" x="455" y="254" text-anchor="middle">SIG 1 →</text>
+      <text class="small" x="455" y="160" text-anchor="middle">one TCP connection</text>
+      <text class="small" x="455" y="176" text-anchor="middle">per client, carrying</text>
+      <text class="small" x="455" y="192" text-anchor="middle">lines of text</text>
+
+      <line class="rule" x1="20" y1="302" x2="880" y2="302"/>
+
+      <!-- lower half: the packages and the folders of Moltaro.Signals -->
+      <text class="head" x="20" y="332">Package Moltaro.Signals</text>
+      <text class="small" x="570" y="332" text-anchor="end">depends on nothing outside .NET</text>
+      <rect class="box" x="20" y="340" width="550" height="264" rx="10"/>
+
+      <rect class="box" x="36" y="356" width="518" height="118" rx="8"/>
+      <text x="52" y="380"><tspan class="name">Moltaro.Signals</tspan><tspan class="small" dx="10">the root of the project</tspan></text>
+      <text x="52" y="404"><tspan class="b">Public contract:</tspan> ISignals, ISignalSubscription, SignalHost,</text>
+      <text x="52" y="422">SignalClient, their options and their results</text>
+      <text x="52" y="446"><tspan class="b">Transport,</tspan> as nested types of SignalHost and SignalClient:</text>
+      <text x="52" y="464">the sockets, the heartbeats, the client’s reconnect</text>
+
+      <path class="dep" marker-end="url(#tip)" d="M158 474 L158 512"/>
+      <text class="small" x="168" y="498">host only</text>
+      <path class="dep" marker-end="url(#tip)" d="M431 474 L431 512"/>
+      <text class="small" x="441" y="498">host and client</text>
+
+      <rect class="box" x="36" y="514" width="245" height="78" rx="8"/>
+      <text x="52" y="538"><tspan class="name">Delivery</tspan><tspan class="small" dx="10">signal delivery</tspan></text>
+      <text x="52" y="558">members and pending signals</text>
+      <text class="small" x="52" y="578">knows nothing of sockets or lines</text>
+
+      <rect class="box" x="309" y="514" width="245" height="78" rx="8"/>
+      <text x="325" y="538"><tspan class="name">Protocol</tspan><tspan class="small" dx="10">protocol codec</tspan></text>
+      <text x="325" y="558">reads and writes the lines</text>
+      <text class="small" x="325" y="578">knows nothing of delivery or sockets</text>
+
+      <text class="head" x="612" y="332">Package Moltaro.Signals.Hosting</text>
+      <rect class="box" x="612" y="340" width="268" height="134" rx="10"/>
+      <text class="mono" x="628" y="366">AddSignalHost</text>
+      <text class="mono" x="628" y="386">AddSignalClient</text>
+      <text class="small" x="628" y="412">register the host or a client</text>
+      <text class="small" x="628" y="428">in a .NET generic host, start it</text>
+      <text class="small" x="628" y="444">with a hosted service and write</text>
+      <text class="small" x="628" y="460">its log lines</text>
+      <path class="dep" marker-end="url(#tip)" d="M612 407 L572 407"/>
+
+      <path class="dep" marker-end="url(#tip)" d="M746 474 L746 512"/>
+      <rect class="box" x="612" y="514" width="268" height="78" rx="8"/>
+      <text class="mono" x="628" y="540">Microsoft.Extensions.</text>
+      <text class="mono" x="628" y="558">Hosting.Abstractions</text>
+      <text class="small" x="628" y="580">the hosting abstractions of .NET</text>
+
+      <!-- legend -->
+      <path class="dep" marker-end="url(#tip)" d="M20 632 L56 632"/>
+      <text class="small" x="64" y="636">an arrow points to what a part uses</text>
+      <line class="conn" x1="300" y1="632" x2="336" y2="632"/>
+      <text class="small" x="344" y="636">one TCP connection with the line protocol</text>
+      <rect class="box lib" x="612" y="625" width="16" height="12" rx="3"/>
+      <text class="small" x="636" y="636">the library in a process</text>
+    </svg>
+  </figure>
+
+  <h2>The processes</h2>
+  <ul>
+    <li><b>The host process.</b> The application process that owns the background work embeds the host,
+      <code>SignalHost</code>. The host keeps the signals in its memory and nothing else, and listens on
+      a TCP port. It is also the <code>ISignals</code> of the code in its own process: a set or a wait
+      there goes straight to the host’s signal delivery, with no socket. There is one host per
+      deployment.</li>
+    <li><b>A client process.</b> Any other process of the deployment, for example an API or a worker. It
+      uses a <code>SignalClient</code> as its <code>ISignals</code>. The client keeps one persistent TCP
+      connection to the host, and all its sets and subscriptions share it: a worker with two lanes has
+      two subscriptions on one connection. The client reports whether it is connected, with
+      <code>State</code> and <code>StateChanged</code>, and reconnects by itself.</li>
+    <li><b><code>ISignals</code>.</b> The one interface of both. <code>SetAsync</code> sets a key;
+      <code>Subscribe</code> makes a member of a group on a key, whose <code>WaitAsync</code> returns when
+      the member should look. Code written against it runs unchanged in the host process and in a client
+      process.</li>
+    <li><b>The line protocol.</b> What a connection carries: one command per line of plain ASCII text,
+      ended by <code>\r\n</code>. The client sends <code>HELLO</code> first, with the protocol version
+      and a shared token, then <code>SUB</code>, <code>WAIT</code>, <code>UNWAIT</code>,
+      <code>UNSUB</code>, <code>SET</code> and <code>PING</code>. The host answers with <code>OK</code>,
+      <code>ERR</code> and <code>PONG</code>, and hands a signal to a member with <code>SIG</code>.
+      <a href="../protocol.md">docs/protocol.md</a> fixes the grammar.</li>
+  </ul>
+
+  <h2>The two packages</h2>
+  <p>The split is decision D10 of the <a href="../concept.md#8-decisions">concept</a>.</p>
+  <ul>
+    <li><b><code>Moltaro.Signals</code></b> holds the whole library: the public contract, the host, the
+      client and the protocol. It depends on nothing outside .NET. A process that creates its host or its
+      client itself needs only this package.</li>
+    <li><b><code>Moltaro.Signals.Hosting</code></b> registers the host or a client in a .NET generic host
+      and its service container, with one call: <code>AddSignalHost</code> or
+      <code>AddSignalClient</code>. The call registers the host or the client as a singleton, whose options
+      its <code>configure</code> fills when it is first resolved, and <code>ISignals</code> as that same
+      object. A hosted service calls <code>Start</code> and writes the log lines: when the host listens,
+      when a client connects, and when its connection ends or the host refuses it. Registered before the
+      other hosted services, the host binds its port before the workers of its process start. When the
+      application stops, the hosted service does nothing; the container disposes the host or the client
+      after every hosted service has stopped. The package depends on <code>Moltaro.Signals</code> and on
+      the hosting abstractions of .NET, <code>Microsoft.Extensions.Hosting.Abstractions</code>.</li>
+  </ul>
+
+  <h2>Inside <code>Moltaro.Signals</code></h2>
+  <p>A folder of the project is a namespace and one responsibility, and the dependencies between them
+    point one way, as principle 10 of <a href="../../AGENTS.md">AGENTS.md</a> requires: signal delivery
+    knows nothing of sockets, the protocol codec knows nothing of signal delivery, and the transport ties
+    the two together.</p>
+  <ul>
+    <li><b><code>Delivery</code>, signal delivery.</b> The rules of
+      <a href="../concept.md#3-semantics">concept §3</a> over plain data: for each key and group its
+      members, whether a signal is pending, and which waiting member a set hands its signal to. It uses
+      neither of the other parts, so each rule is tested on it directly, without a connection.</li>
+    <li><b><code>Protocol</code>, the protocol codec.</b> It reads and writes the lines of
+      <a href="../protocol.md">docs/protocol.md</a>, and holds the rules that both sides check, so that
+      the host and its clients check the same limits: the name rule of a key and a group, the token, the
+      length of a line. It knows nothing of signal delivery or sockets.</li>
+    <li><b>The root, namespace <code>Moltaro.Signals</code>.</b> The public contract:
+      <code>ISignals</code>, <code>ISignalSubscription</code>, <code>SignalHost</code>,
+      <code>SignalClient</code>, their options and their results. And the transport, as nested types of
+      <code>SignalHost</code> and <code>SignalClient</code>: the sockets, the heartbeats and, in the
+      client, the reconnect. On the host, the transport decodes each line of a connection with the codec,
+      and each <code>SUB</code>, <code>WAIT</code>, <code>UNWAIT</code>, <code>UNSUB</code> and
+      <code>SET</code> becomes a call of signal delivery; a signal that delivery hands to a remote member
+      goes out as its <code>SIG</code> line. In the host process, <code>SignalHost</code> as
+      <code>ISignals</code> calls signal delivery directly, without the codec. The client uses only the
+      codec: signal delivery runs in the host alone.</li>
+  </ul>
+  <p>The arrows point from the root to the two folders and never back, and there is none between the
+    two folders.</p>
+
+  <h2>What an application can rely on</h2>
+  <ul>
+    <li><b>One interface, wherever the host is.</b> Code written against <code>ISignals</code> follows
+      the same rules in the host process and in a client process; only the line that creates or
+      registers the host or the client differs.</li>
+    <li><b>Nothing else to run.</b> The host lives in an application process: there is no broker, no
+      cluster and no store. If that process is down, its clients report <code>Disconnected</code> within
+      seconds; when it is back, every member does one full pass.</li>
+    <li><b>A small core.</b> <code>Moltaro.Signals</code> depends on nothing outside .NET. The hosting
+      package adds only the registration in a generic host, which an application without one does not
+      need.</li>
+    <li><b>A wire a person can read.</b> Each client has one TCP connection, carrying lines of text;
+      <code>nc</code> is enough to type a session against a host, as the
+      <a href="../protocol.md#example">example of docs/protocol.md</a> shows.</li>
+  </ul>
+</main>
+</body>
+</html>

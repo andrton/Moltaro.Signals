@@ -74,8 +74,8 @@
     in-process host, <code>SignalHost</code> used as <code>ISignals</code>, with everything this page
     shows. Since sprint S3 the host also listens over TCP, and since sprint S5 <code>SignalClient</code>
     is the same <code>ISignals</code> in other processes: its members belong to the same groups and see
-    the same behavior. The hosting package, <code>Moltaro.Signals.Hosting</code>, is not built
-    yet.</p>
+    the same behavior. Sprint S6 built the hosting package, <code>Moltaro.Signals.Hosting</code>, which
+    registers the host or a client in a .NET generic host.</p>
 
   <h2>The idea</h2>
   <blockquote>A set gives each group on a key one signal: “look now”. One waiting member of the group

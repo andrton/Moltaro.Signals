@@ -7,8 +7,9 @@ is [signal-delivery.html](signal-delivery.html).
 **Status, 19 November 2026.** Built. Sprint S2 of the first epic built the in-process
 host, `SignalHost` used as `ISignals`, with everything this page shows. Since sprint S3
 the host also listens over TCP, and since sprint S5 `SignalClient` is the same `ISignals`
-in other processes: its members belong to the same groups and see the same behavior. The
-hosting package, `Moltaro.Signals.Hosting`, is not built yet.
+in other processes: its members belong to the same groups and see the same behavior.
+Sprint S6 built the hosting package, `Moltaro.Signals.Hosting`, which registers the host or
+a client in a .NET generic host.
 
 ## The idea
 
