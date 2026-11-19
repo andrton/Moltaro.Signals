@@ -2,11 +2,11 @@ using System.Diagnostics;
 
 namespace Moltaro.Signals.Measurements;
 
-// The sets of one SignalClient over loopback, reported only (PQ2): the sets per second when several callers share the
-// client, each awaiting its set before it makes the next, and the bytes allocated in the process per set, the host's
-// included; with one caller, the bytes per remote SetAsync. The one member of the key is on the host and never waits,
-// so every set after the first finds a signal pending, as most sets do. The rate is counted over a fixed time after a
-// warm-up.
+// The sets of one SignalClient over loopback, reported only (concept section 11): the sets per second when several
+// callers share the client, each awaiting its set before it makes the next, and the bytes allocated in the process per
+// set, the host's included; with one caller, the bytes per remote SetAsync. The one member of the key is on the host
+// and never waits, so every set after the first finds a signal pending, as most sets do. The rate is counted over a
+// fixed time after a warm-up.
 internal static class ClientSets
 {
     private static readonly int[] CallerCounts = [1, 8, 64];

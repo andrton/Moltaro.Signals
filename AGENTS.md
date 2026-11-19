@@ -13,8 +13,7 @@ carries no data: it only says "look now", coalesces per key and group, and wakes
 waiting member of each group on each key it sets.
 
 What exists today is the **concept** and the library it describes: the host, the client
-and the hosting package, not yet released; the epic in [current work](docs/work/README.md)
-leads to the first release. The
+and the hosting package, published on nuget.org from version 0.1.0. The
 [concept](docs/concept.md) is the authority for what the library guarantees: its
 semantics, its decisions D1–D15 and its non-goals. `README.md` says what works today; a
 feature is delivered when the README says so.
@@ -161,8 +160,9 @@ tests that state its behavior. Implementation follows.
   validating a key, a group or an option.
 - When the implementation arrives it has to pass the tests that were written for the
   contract. Do not weaken or delete a test to get a green run.
-- Nothing has been released. There are no compatibility shims: when something is replaced,
-  remove the old code, tests and documentation in the same change.
+- Versions stay 0.x until a first production adopter runs on the library (concept D13),
+  so there are no compatibility shims: when something is replaced, remove the old code,
+  tests and documentation in the same change.
 - The protocol is part of the contract. Its grammar lives in `docs/protocol.md`, written
   with the sprint that introduces it, and its version is part of `HELLO`.
 
@@ -305,7 +305,8 @@ dotnet format --verify-no-changes
 - Never commit to `main`. Work on a branch named as
   [branches and releases](docs/work/branches.md) says; `main` changes only through a
   pull request, merged by the owner or, for a closed sprint and with the owner's standing
-  permission, by the coordinator of an epic. Do not create or move a release tag.
+  permission, by the coordinator of an epic. Never move a release tag; create one only
+  when the owner tells you to, for that version.
 - Commit messages carry no agent attribution: no `Co-Authored-By` line and no "generated
   with" line. This overrides the default of any tool.
 - Planning an epic, coordinating its sprints, reviewing a sprint or refactoring follows

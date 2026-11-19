@@ -97,20 +97,16 @@ only documents: a required check that does not run would block the pull request.
 
 - **Versions** follow semantic versioning. Until a first production adopter runs on the
   library, the version is `0.x.y`, and a release is a regular version, not a pre-release
-  (concept D13, D15). Nothing is tagged before the first epic delivers a working library.
-- **A release is made by the owner**: with `main` green, tag the commit and push the tag.
-  The [Publish](../../.github/workflows/publish.yml) workflow builds, tests and packs that
+  (concept D13, D15).
+- **A release is made by the owner**, or by an agent that the owner tells to make it, for
+  that version: with `main` green, tag the commit and push the tag. The
+  [Publish](../../.github/workflows/publish.yml) workflow builds, tests and packs that
   commit and pushes the packages to nuget.org; it refuses a tag that is not on `main`.
   There is no stored API key: the workflow signs in through nuget.org Trusted Publishing.
-- **Before the first release tag** the owner re-activates the nuget.org Trusted Publishing
-  policy "Moltaro.Signals". Until a package has been published through it, the policy is
-  active only for a limited time, so it may have lapsed since it was created, and the
-  sign-in of the workflow would then fail.
 - **A release tag is permanent.** The ruleset in
   [`.github/rulesets/release-tags.json`](../../.github/rulesets/release-tags.json) refuses
   moving or deleting a `v*` tag. A wrong release is followed by a new version, never by a
   re-tag.
-- **An agent does not create a release tag.**
 
 ```bash
 git tag v0.1.0

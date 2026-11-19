@@ -50,7 +50,7 @@ None.
 | --- | --- |
 | **Found** | 18 November 2026, Epic 1, S1, by the test author |
 | **Question** | When a client connects, it sends the openings of its subscriptions and then reports `Connected`; a subscription returns `Joined` once the host answered its opening. Is `State` already `Connected` when such a `Joined` returns, or may the `Joined` come first? |
-| **Answer** | The planner, 19 November 2026, at the start of Epic 1, S5: `State` is `Connected` before any `Joined` of that connection can be decided. `Connected` is set in the same section under the client's lock that writes the reopening `SUB`s, and the reader handles an `OK <sid>` only after that section. The notification of `Connected` is not ordered against the `Joined`: its handler runs on the thread pool, apart from any wait, and `State` may have moved on by then. The rule lives in the brief of S5 and in the documentation of `SignalClient.Start` |
+| **Answer** | The planner, 19 November 2026, at the start of Epic 1, S5: `State` is `Connected` before any `Joined` of that connection can be decided. `Connected` is set in the same section under the client's lock that writes the reopening `SUB`s, and the reader handles an `OK <sid>` only after that section. The notification of `Connected` is not ordered against the `Joined`: its handler runs on the thread pool, apart from any wait, and `State` may have moved on by then. The rule lives in the documentation of `SignalClient.Start` |
 
 ### Q2. A time limit for a test run that hangs
 

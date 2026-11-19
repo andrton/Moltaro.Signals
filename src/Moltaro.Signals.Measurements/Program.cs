@@ -1,9 +1,8 @@
 using Moltaro.Signals.Measurements;
 
-// The measurements of the performance targets of concept section 11, judged as the owner answered PQ2 of the first
-// epic. Started by hand from src with "dotnet run -c Release --project Moltaro.Signals.Measurements"; never by CI or
-// the test lane. Every figure is printed below the processor, the operating system and the .NET version it was
-// measured on.
+// The measurements of the performance targets of concept section 11, judged as that section says. Started by hand from
+// src with "dotnet run -c Release --project Moltaro.Signals.Measurements"; never by CI or the test lane. Every figure
+// is printed below the processor, the operating system and the .NET version it was measured on.
 //
 // The scenarios take no cancellation token: a cancellable token changes what a wait costs, and a run ends by itself.
 Console.WriteLine(Machine.Describe());

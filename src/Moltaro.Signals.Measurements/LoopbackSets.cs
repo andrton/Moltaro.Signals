@@ -5,11 +5,11 @@ using System.Text;
 
 namespace Moltaro.Signals.Measurements;
 
-// SET lines over loopback, reported only (PQ2): the rate at which a host applies the SET lines of one connection that
-// sends them without waiting for their answers, and the bytes allocated in the process per SET. The client is a raw
-// socket in the same process that writes the lines and counts the answers; it allocates nothing per line, so the bytes
-// are the host's. The one member of the key never waits, so every set after the first finds a signal pending, as most
-// sets do.
+// SET lines over loopback, reported only (concept section 11): the rate at which a host applies the SET lines of one
+// connection that sends them without waiting for their answers, and the bytes allocated in the process per SET. The
+// client is a raw socket in the same process that writes the lines and counts the answers; it allocates nothing per
+// line, so the bytes are the host's. The one member of the key never waits, so every set after the first finds a
+// signal pending, as most sets do.
 internal static class LoopbackSets
 {
     private const int WarmUpSets = 100_000;
