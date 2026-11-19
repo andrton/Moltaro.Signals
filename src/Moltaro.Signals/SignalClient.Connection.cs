@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Net.Sockets;
 using System.Text;
 using Moltaro.Signals.Protocol;
@@ -13,9 +12,9 @@ public sealed partial class SignalClient
     //
     // Its reader owns its lines. It handles each complete line in one section under the client's lock, which matches an
     // answer to its request by <rid> or <sid>, and completes the caller after the lock. The calls of the client append
-    // their lines under the lock, and a flush sends them on the thread pool. The reader does not wait for the flush: the
-    // output is bounded by the requests outstanding on the connection, and a host that does not read answers nothing and
-    // is declared dead.
+    // their lines to its output under the lock, and its ConnectionOutput sends them on the thread pool. The reader does
+    // not wait for the flush: the output is bounded by the requests outstanding on the connection, and a host that does
+    // not read answers nothing and is declared dead.
     //
     // Liveness is measured with the timestamps of the TimeProvider, not with its wall clock, so that a clock set back or
     // forward changes no heartbeat and no dead peer.
@@ -26,6 +25,16 @@ public sealed partial class SignalClient
     private sealed class Connection
     {
         private const int BufferLength = 4096;
+
+        // The fixed sentences of the reasons of Disconnected, beside the code and text of a refusal by the host and the
+        // reason of a line of the host that breaks the grammar.
+        private const string ClosedByHost = "The host closed the connection.";
+
+        private const string NoTraffic = "Nothing came from the host for DeadPeerTimeout.";
+
+        private const string ConnectionFailed = "The connection to the host failed.";
+
+        private const string NotOutstanding = "The host answered a request that is not outstanding.";
 
         private readonly SignalClient _client;
 
@@ -42,25 +51,15 @@ public sealed partial class SignalClient
         // then only the end reads them.
         private readonly Dictionary<long, TaskCompletionSource<SignalSetResult>> _sets = [];
 
-        // FlushAsync as a delegate made once, so that starting a flush makes no new delegate.
-        private readonly Func<Task> _flushAsync;
+        // The lines the client writes on the connection. It takes the timestamp of every send from the client's clock,
+        // for the heartbeat; a failed send ends the connection with ConnectionFailed.
+        private readonly ConnectionOutput _output;
 
         // Completes once the end has run: the socket is closed, and the callers it ended are completed.
         private readonly TaskCompletionSource _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        // The output not sent yet, guarded by the client's lock. The flush swaps it with _sending, which only the flush
-        // touches, and at most one flush runs.
-        private ArrayBufferWriter<byte> _pending = new(BufferLength);
-
-        private ArrayBufferWriter<byte> _sending = new(BufferLength);
-
-        // The flush that runs; null when none does. Guarded by the client's lock.
-        private Task? _flush;
-
-        // The timestamps of the last output handed to the socket, written by the flush, and of the last receive, written by
-        // the reader; the timer reads both.
-        private long _lastSentTimestamp;
-
+        // The timestamp of the last receive, written by the reader; the timer reads it, and that of the last send from the
+        // output.
         private long _lastReceivedTimestamp;
 
         // The timestamp of the last PING; null before the first. Guarded by the client's lock.
@@ -81,11 +80,15 @@ public sealed partial class SignalClient
         internal Connection(SignalClient client)
         {
             _client = client;
-            _flushAsync = FlushAsync;
 
             // A line goes out at once, not held back to be sent together with later ones. A socket of both families,
             // where the system has both, connects to an address of either, and to a name resolved to either.
             _socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            _output = new ConnectionOutput(
+                client._lock,
+                _socket,
+                sentClock: client._timeProvider,
+                sendFailed: () => End(ConnectionFailed));
 
             // Not armed before the host accepts the HELLO: until then the deadline of the attempt bounds it.
             _timer = client._timeProvider.CreateTimer(
@@ -167,7 +170,7 @@ public sealed partial class SignalClient
 
             End(reason);
             await _ended.Task.ConfigureAwait(false);
-            await WhenSent().ConfigureAwait(false);
+            await _output.WhenSent().ConfigureAwait(false);
 
             return _accepted;
         }
@@ -176,25 +179,25 @@ public sealed partial class SignalClient
         // connection opens.
         internal void WriteSub(long sid, string key, string group)
         {
-            Write(LineFormatter.Sub(LineSpace(), sid, key, group));
+            _output.Write(LineFormatter.Sub(_output.LineSpace(), sid, key, group));
         }
 
         // Under the client's lock, as WriteSub: WAIT for an open member.
         internal void WriteWait(long sid)
         {
-            Write(LineFormatter.Wait(LineSpace(), sid));
+            _output.Write(LineFormatter.Wait(_output.LineSpace(), sid));
         }
 
         // Under the client's lock, as WriteSub: UNWAIT for an armed member.
         internal void WriteUnwait(long sid)
         {
-            Write(LineFormatter.Unwait(LineSpace(), sid));
+            _output.Write(LineFormatter.Unwait(_output.LineSpace(), sid));
         }
 
         // Under the client's lock, as WriteSub: UNSUB for a member that the client closes.
         internal void WriteUnsub(long sid)
         {
-            Write(LineFormatter.Unsub(LineSpace(), sid));
+            _output.Write(LineFormatter.Unsub(_output.LineSpace(), sid));
         }
 
         // Under the client's lock, as WriteSub: SET with a new <rid>, whose answer the returned completion receives.
@@ -204,7 +207,7 @@ public sealed partial class SignalClient
             var answer = new TaskCompletionSource<SignalSetResult>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             _sets.Add(rid, answer);
-            Write(LineFormatter.Set(LineSpace(), rid, key));
+            _output.Write(LineFormatter.Set(_output.LineSpace(), rid, key));
 
             return answer;
         }
@@ -316,7 +319,7 @@ public sealed partial class SignalClient
             {
                 if (!_ending)
                 {
-                    Write(LineFormatter.Hello(LineSpace(), _client._token));
+                    _output.Write(LineFormatter.Hello(_output.LineSpace(), _client._token));
                 }
             }
         }
@@ -364,13 +367,13 @@ public sealed partial class SignalClient
             {
                 HostVerbEnum.Ok when line.Groups is { } groups => HandleSetAnswer(line.Id, groups),
                 HostVerbEnum.Ok when line.Id == 0 => Close(NotOutstanding),
-                HostVerbEnum.Ok => HandleSubscriptionAnswer(line.Id),
                 HostVerbEnum.Err when line.Id == 0 => Refused(line),
-                HostVerbEnum.Err => HandleRefusedSubscription(line.Id, line.Text),
-                HostVerbEnum.Sig => HandleSignal(line.Id),
 
                 // PONG: traffic, which the receive has counted.
-                _ => true,
+                HostVerbEnum.Pong => true,
+
+                // OK <sid>, ERR <sid> and SIG <sid>.
+                _ => HandleMemberLine(line),
             };
         }
 
@@ -463,9 +466,15 @@ public sealed partial class SignalClient
             return true;
         }
 
-        // OK <sid>: the answer to the SUB or the UNWAIT of the member. A <sid> the client has closed is ignored.
-        private bool HandleSubscriptionAnswer(long sid)
+        // A line for one member: OK <sid>, the answer to its SUB or its UNWAIT; ERR <sid> subscriptions <text>, the refusal
+        // of its SUB; or SIG <sid>. A <sid> the client has closed is ignored; the host handed the signal of a SIG for it on
+        // when it removed the member. A line for an open member with nothing of it outstanding breaks the protocol and
+        // closes the connection.
+        private bool HandleMemberLine(HostLine line)
         {
+            long sid = line.Id;
+            bool refused = line.Verb == HostVerbEnum.Err;
+            string? refusal = refused ? Encoding.ASCII.GetString(line.Text) : null;
             RemoteSubscription? subscription;
             bool answered = true;
             bool complete = false;
@@ -479,80 +488,18 @@ public sealed partial class SignalClient
 
                 if (_client._subscriptions.TryGetValue(sid, out subscription))
                 {
-                    answered = subscription.Answer(out complete);
-                }
-            }
+                    answered = line.Verb switch
+                    {
+                        HostVerbEnum.Ok => subscription.Answer(out complete),
+                        HostVerbEnum.Err => subscription.Refuse(refusal!, out complete),
+                        _ => subscription.Signal(out complete),
+                    };
 
-            if (!answered)
-            {
-                return Close(NotOutstanding);
-            }
-
-            if (complete)
-            {
-                subscription!.CompleteWait();
-            }
-
-            return true;
-        }
-
-        // ERR <sid> subscriptions <text>: the host refused to open the member, which is closed for good. A <sid> the
-        // client has closed is ignored.
-        private bool HandleRefusedSubscription(long sid, ReadOnlySpan<byte> text)
-        {
-            string refusal = Encoding.ASCII.GetString(text);
-            RemoteSubscription? subscription;
-            bool answered = true;
-            bool complete = false;
-
-            lock (_client._lock)
-            {
-                if (_ending)
-                {
-                    return false;
-                }
-
-                if (_client._subscriptions.TryGetValue(sid, out subscription))
-                {
-                    answered = subscription.Refuse(refusal, out complete);
-
-                    if (answered)
+                    // A refused member is closed for good.
+                    if (answered && refused)
                     {
                         _client._subscriptions.Remove(sid);
                     }
-                }
-            }
-
-            if (!answered)
-            {
-                return Close(NotOutstanding);
-            }
-
-            if (complete)
-            {
-                subscription!.CompleteWait();
-            }
-
-            return true;
-        }
-
-        // SIG <sid>. A <sid> the client has closed is ignored: the host handed that signal on when it removed the member.
-        private bool HandleSignal(long sid)
-        {
-            RemoteSubscription? subscription;
-            bool answered = true;
-            bool complete = false;
-
-            lock (_client._lock)
-            {
-                if (_ending)
-                {
-                    return false;
-                }
-
-                if (_client._subscriptions.TryGetValue(sid, out subscription))
-                {
-                    answered = subscription.Signal(out complete);
                 }
             }
 
@@ -628,16 +575,16 @@ public sealed partial class SignalClient
         private bool Beat(long now)
         {
             TimeProvider timeProvider = _client._timeProvider;
-            TimeSpan sinceReceived = SignalChecks.Elapsed(timeProvider, Volatile.Read(ref _lastReceivedTimestamp), now);
+            TimeSpan sinceReceived = Timing.Elapsed(timeProvider, Volatile.Read(ref _lastReceivedTimestamp), now);
 
             if (sinceReceived >= _client._deadPeerTimeout)
             {
                 return false;
             }
 
-            TimeSpan sinceSent = SignalChecks.Elapsed(timeProvider, Volatile.Read(ref _lastSentTimestamp), now);
+            TimeSpan sinceSent = Timing.Elapsed(timeProvider, _output.LastSentTimestamp, now);
             TimeSpan sincePing = _lastPingTimestamp is { } pinged
-                ? SignalChecks.Elapsed(timeProvider, pinged, now)
+                ? Timing.Elapsed(timeProvider, pinged, now)
                 : TimeSpan.MaxValue;
 
             // How long the connection has been quiet on the side that was quiet longer, unless a PING went out since.
@@ -650,7 +597,7 @@ public sealed partial class SignalClient
 
             if (quiet >= _client._heartbeatInterval)
             {
-                Write(LineFormatter.Ping(LineSpace()));
+                _output.Write(LineFormatter.Ping(_output.LineSpace()));
                 _lastPingTimestamp = now;
                 quiet = TimeSpan.Zero;
             }
@@ -659,82 +606,9 @@ public sealed partial class SignalClient
             TimeSpan untilPing = _client._heartbeatInterval - quiet;
             TimeSpan untilDead = _client._deadPeerTimeout - sinceReceived;
 
-            _timer.Change(SignalChecks.DueTime(untilPing < untilDead ? untilPing : untilDead), Timeout.InfiniteTimeSpan);
+            _timer.Change(Timing.DueTime(untilPing < untilDead ? untilPing : untilDead), Timeout.InfiniteTimeSpan);
 
             return true;
-        }
-
-        // Under the client's lock: room for one line at the end of the pending output.
-        private Span<byte> LineSpace()
-        {
-            return _pending.GetSpan(ProtocolRules.LineRoom);
-        }
-
-        // Under the client's lock: takes the line just written into LineSpace into the pending output, and starts a flush
-        // when none runs. The flush runs on the thread pool, never inline in the section that wrote the line.
-        private void Write(int length)
-        {
-            _pending.Advance(length);
-
-            if (_flush is null)
-            {
-                // The flush serves the connection, not the code that wrote the line, so it does not capture the
-                // execution context of that code.
-                using AsyncFlowControl? flow = ExecutionContext.IsFlowSuppressed() ? null : ExecutionContext.SuppressFlow();
-
-                _flush = Task.Run(_flushAsync);
-            }
-        }
-
-        // Completes when the output written so far has been sent, with any written meanwhile, or when a send failed and
-        // ended the connection: the flush that runs, or a completed task when none does.
-        private Task WhenSent()
-        {
-            lock (_client._lock)
-            {
-                return _flush ?? Task.CompletedTask;
-            }
-        }
-
-        // Sends the pending output until none is left, then ends under the client's lock. It swaps the buffers under the
-        // lock and sends outside it. A failed send ends the connection.
-        private async Task FlushAsync()
-        {
-            try
-            {
-                while (true)
-                {
-                    lock (_client._lock)
-                    {
-                        if (_pending.WrittenCount == 0)
-                        {
-                            _flush = null;
-
-                            return;
-                        }
-
-                        (_pending, _sending) = (_sending, _pending);
-                    }
-
-                    // A line counts as sent when it is handed to the socket. The host cannot read it before, so the
-                    // instant is that at which the client wrote it unless the clock moved meanwhile.
-                    Volatile.Write(ref _lastSentTimestamp, _client._timeProvider.GetTimestamp());
-
-                    ReadOnlyMemory<byte> unsent = _sending.WrittenMemory;
-
-                    while (!unsent.IsEmpty)
-                    {
-                        int sent = await _socket.SendAsync(unsent, SocketFlags.None).ConfigureAwait(false);
-                        unsent = unsent[sent..];
-                    }
-
-                    _sending.ResetWrittenCount();
-                }
-            }
-            catch (Exception exception) when (exception is SocketException or ObjectDisposedException)
-            {
-                End(ConnectionFailed);
-            }
         }
     }
 }

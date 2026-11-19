@@ -1,4 +1,5 @@
 using System.Net;
+using Moltaro.Signals.Tests.RawProtocol;
 using Moltaro.Signals.TestSupport;
 
 namespace Moltaro.Signals.Tests.HostOverTcp;

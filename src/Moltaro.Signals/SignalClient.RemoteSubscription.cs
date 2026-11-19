@@ -60,7 +60,7 @@ public sealed partial class SignalClient
         public ValueTask<SignalWaitResultEnum> WaitAsync(DateTimeOffset? until, CancellationToken cancellationToken = default)
         {
             // Read before the lock is taken, because the TimeProvider is code of the application.
-            TimeSpan? dueTime = until is { } deadline ? SignalChecks.TimeUntil(deadline, _client._timeProvider.GetUtcNow()) : null;
+            TimeSpan? dueTime = until is { } deadline ? Timing.TimeUntil(deadline, _client._timeProvider.GetUtcNow()) : null;
             TaskCompletionSource<SignalWaitResultEnum> waiter;
 
             lock (_client._lock)
@@ -102,7 +102,7 @@ public sealed partial class SignalClient
                 _error = null;
                 _cancelledBy = default;
 
-                // An open member asks the host; one that is not open waits until it is (rule 5).
+                // An open member asks the host; one that is not open waits until it is (rule 5 of WaitAsync).
                 if (_open)
                 {
                     _client._connection!.WriteWait(Sid);
@@ -257,8 +257,8 @@ public sealed partial class SignalClient
 
         // Under the client's lock, when its connection ends: the host has ended the member, and handed its signal on if it
         // was busy. A Joined is due on the next connection, and a wait that waited on the host waits for the reopening.
-        // A wait that waited for the answer to its UNWAIT ends without it, as rule 5 says: true, and the caller runs
-        // CompleteWait after the lock.
+        // A wait that waited for the answer to its UNWAIT ends without it, as rule 5 of WaitAsync says: true, and the
+        // caller runs CompleteWait after the lock.
         internal bool LoseConnection()
         {
             _opening = false;
@@ -409,7 +409,7 @@ public sealed partial class SignalClient
                     return;
                 }
 
-                TimeSpan? rest = SignalChecks.TimeUntil(deadline, now);
+                TimeSpan? rest = Timing.TimeUntil(deadline, now);
 
                 if (rest != TimeSpan.Zero)
                 {

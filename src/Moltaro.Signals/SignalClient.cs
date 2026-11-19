@@ -24,16 +24,6 @@ namespace Moltaro.Signals;
 /// </remarks>
 public sealed partial class SignalClient : ISignals, IAsyncDisposable
 {
-    // The fixed sentences of the reasons of Disconnected, beside the code and text of a refusal by the host and the
-    // reason of a line of the host that breaks the grammar.
-    private const string ClosedByHost = "The host closed the connection.";
-
-    private const string NoTraffic = "Nothing came from the host for DeadPeerTimeout.";
-
-    private const string ConnectionFailed = "The connection to the host failed.";
-
-    private const string NotOutstanding = "The host answered a request that is not outstanding.";
-
     // The one lock of the client. It guards _connection, _subscriptions, _lastId, _notifications, _notifying, _running,
     // _disposal, the change of _state, the wait fields of every subscription, and of every connection its output, its
     // sets, its acceptance and its end. Under it the client runs no code of the application except, for deadlines and
