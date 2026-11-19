@@ -47,8 +47,10 @@ public sealed partial class SignalHost
 
         private readonly ITimer _timer;
 
-        // The UTC ticks of the accept: before HELLO, the deadline of the connection is its accept plus DeadPeerTimeout.
-        private readonly long _acceptedTicks;
+        // The timestamp of the accept: before HELLO, the deadline of the connection is its accept plus DeadPeerTimeout.
+        // The timer measures with the timestamps of the TimeProvider, not with its wall clock, so that a clock set back
+        // or forward changes no deadline of a connection.
+        private readonly long _acceptedTimestamp;
 
         // Complete lines are read where they lie; only the incomplete tail of a receive is moved to the front.
         private readonly byte[] _received = new byte[BufferLength];
@@ -70,9 +72,9 @@ public sealed partial class SignalHost
         // The flush that runs; null when none does. Guarded by the host's lock.
         private Task? _flush;
 
-        // The UTC ticks of the last receive: after HELLO, the deadline of the connection is this plus DeadPeerTimeout.
+        // The timestamp of the last receive: after HELLO, the deadline of the connection is this plus DeadPeerTimeout.
         // Written by the reader and read by the timer, without the lock.
-        private long _lastReceivedTicks;
+        private long _lastReceivedTimestamp;
 
         // Written by the reader under the host's lock; read under it by the timer and the end, and by the reader itself
         // without it.
@@ -82,12 +84,12 @@ public sealed partial class SignalHost
         private bool _ending;
 
         // Under the host's lock, when the host admits the connection. Its timer is armed for the deadline of its HELLO.
-        internal Connection(SignalHost host, Socket socket, DateTimeOffset acceptedAt)
+        internal Connection(SignalHost host, Socket socket, long acceptedAt)
         {
             _host = host;
             _socket = socket;
-            _acceptedTicks = acceptedAt.UtcTicks;
-            _lastReceivedTicks = _acceptedTicks;
+            _acceptedTimestamp = acceptedAt;
+            _lastReceivedTimestamp = acceptedAt;
             _flushAsync = FlushAsync;
             _timer = host._timeProvider.CreateTimer(
                 static state => ((Connection)state!).OnTimer(),
@@ -254,7 +256,7 @@ public sealed partial class SignalHost
                     return;
                 }
 
-                Volatile.Write(ref _lastReceivedTicks, _host._timeProvider.GetUtcNow().UtcTicks);
+                Volatile.Write(ref _lastReceivedTimestamp, _host._timeProvider.GetTimestamp());
                 filled += received;
 
                 int consumed = HandleLines(filled);
@@ -665,8 +667,12 @@ public sealed partial class SignalHost
         // of an ending connection disposes its socket.
         private void OnTimer()
         {
-            // Read before the lock is taken, because the TimeProvider is code of the application.
-            DateTimeOffset now = _host._timeProvider.GetUtcNow();
+            // Read before the lock is taken, because the TimeProvider is code of the application. The last receive is read
+            // before the present timestamp, so that the time since it is never negative.
+            long lastReceived = Volatile.Read(ref _lastReceivedTimestamp);
+            long now = _host._timeProvider.GetTimestamp();
+            TimeSpan sinceAccept = _host._timeProvider.GetElapsedTime(_acceptedTimestamp, now);
+            TimeSpan sinceReceive = _host._timeProvider.GetElapsedTime(lastReceived, now);
             bool ending;
             bool beforeHello;
 
@@ -677,14 +683,12 @@ public sealed partial class SignalHost
 
                 if (!ending)
                 {
-                    long silentSince = beforeHello ? _acceptedTicks : Volatile.Read(ref _lastReceivedTicks);
-                    DateTimeOffset deadline = new DateTimeOffset(silentSince, TimeSpan.Zero) + _host._deadPeerTimeout;
-                    TimeSpan? rest = SignalChecks.TimeUntil(deadline, now);
+                    TimeSpan rest = _host._deadPeerTimeout - (beforeHello ? sinceAccept : sinceReceive);
 
-                    if (rest != TimeSpan.Zero)
+                    if (rest > TimeSpan.Zero)
                     {
-                        // A rest beyond the longest timer comes only from a clock set back that far.
-                        _timer.Change(rest ?? _host._deadPeerTimeout, Timeout.InfiniteTimeSpan);
+                        // The rest is at most DeadPeerTimeout, so its due time is within the longest timer.
+                        _timer.Change(SignalChecks.DueTime(rest), Timeout.InfiniteTimeSpan);
 
                         return;
                     }

@@ -138,6 +138,43 @@ public sealed class LivenessTests
         Assert.False(wait.IsCompleted);
     }
 
+    // Once the client is connected, its wall clock is set back by sixty days, beyond the longest timer, while its
+    // timestamps go on. The host answers nothing: the PINGs and the dead peer come at the same instants as with a wall
+    // clock that was never set back, because the client measures liveness by the timestamps.
+    [Fact]
+    public async Task A_wall_clock_set_back_changes_neither_the_PINGs_nor_the_dead_peer()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        var clock = new FakeClock();
+        var wallClock = new ShiftedWallClock(clock);
+        using RawHost host = RawHost.Start();
+        await using SignalClient client = host.CreateClient(clock, options =>
+        {
+            Configure(options);
+            options.TimeProvider = wallClock;
+        });
+        var changes = new StateChanges(client);
+        client.Start();
+        using RawConnection connection = await host.AcceptAsync(changes, cancellationToken);
+        DateTimeOffset t0 = clock.GetUtcNow();
+
+        wallClock.Shift = -TimeSpan.FromDays(60);
+
+        await clock.WaitForTimerAsync(t0 + HeartbeatInterval, cancellationToken);
+        clock.Advance(HeartbeatInterval);
+        Assert.Equal("PING", await connection.ReadLineAsync(cancellationToken));
+
+        await clock.WaitForTimerAsync(t0 + (2 * HeartbeatInterval), cancellationToken);
+        clock.Advance(HeartbeatInterval);
+        Assert.Equal("PING", await connection.ReadLineAsync(cancellationToken));
+
+        await clock.WaitForTimerAsync(t0 + DeadPeerTimeout, cancellationToken);
+        clock.Advance(DeadPeerTimeout - (2 * HeartbeatInterval));
+
+        Assert.Equal(SignalConnectionStateEnum.Disconnected, (await changes.NextAsync(cancellationToken)).State);
+        Assert.Null(await connection.ReadLineAsync(cancellationToken));
+    }
+
     private static void Configure(SignalClientOptions options)
     {
         options.HeartbeatInterval = HeartbeatInterval;

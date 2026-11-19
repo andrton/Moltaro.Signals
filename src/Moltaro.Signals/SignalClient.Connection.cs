@@ -14,8 +14,11 @@ public sealed partial class SignalClient
     // Its reader owns its lines. It handles each complete line in one section under the client's lock, which matches an
     // answer to its request by <rid> or <sid>, and completes the caller after the lock. The calls of the client append
     // their lines under the lock, and a flush sends them on the thread pool. The reader does not wait for the flush: the
-    // output is bounded by the requests that wait for an answer, at most one per caller and per subscription, and a host
-    // that does not read answers nothing and is declared dead.
+    // output is bounded by the requests outstanding on the connection, and a host that does not read answers nothing and
+    // is declared dead.
+    //
+    // Liveness is measured with the timestamps of the TimeProvider, not with its wall clock, so that a clock set back or
+    // forward changes no heartbeat and no dead peer.
     //
     // Its end runs once, begun under the client's lock by whichever comes first: the reader, the flush, the timer or the
     // client's dispose. From that section the connection takes no more lines and no more output, its sets are
@@ -54,14 +57,14 @@ public sealed partial class SignalClient
         // The flush that runs; null when none does. Guarded by the client's lock.
         private Task? _flush;
 
-        // The UTC ticks of the last output handed to the socket, written by the flush, and of the last receive, written by
+        // The timestamps of the last output handed to the socket, written by the flush, and of the last receive, written by
         // the reader; the timer reads both.
-        private long _lastSentTicks;
+        private long _lastSentTimestamp;
 
-        private long _lastReceivedTicks;
+        private long _lastReceivedTimestamp;
 
-        // The UTC ticks of the last PING. Guarded by the client's lock.
-        private long _lastPingTicks;
+        // The timestamp of the last PING; null before the first. Guarded by the client's lock.
+        private long? _lastPingTimestamp;
 
         // Written by the reader under the client's lock; read under it by the others, and by the reader itself without it.
         private bool _accepted;
@@ -127,7 +130,7 @@ public sealed partial class SignalClient
                         break;
                     }
 
-                    Volatile.Write(ref _lastReceivedTicks, _client._timeProvider.GetUtcNow().UtcTicks);
+                    Volatile.Write(ref _lastReceivedTimestamp, _client._timeProvider.GetTimestamp());
                     filled += received;
 
                     bool accepting = !_accepted;
@@ -395,9 +398,13 @@ public sealed partial class SignalClient
         // OK 0. In one section the attempt is accepted, every open subscription is opened on it, the client becomes
         // Connected and its notification is queued. The reader handles the answers to these SUBs only after this section,
         // so no Joined of the connection is decided before Connected (open question Q1). The timer is armed for the first
-        // heartbeat, counted from the HELLO and from this answer.
+        // heartbeat, counted from the HELLO and from this answer: the timestamp of the HELLO is read before the SUBs are
+        // written, and the present is that of this answer.
         private bool Accept()
         {
+            long sent = Volatile.Read(ref _lastSentTimestamp);
+            long received = Volatile.Read(ref _lastReceivedTimestamp);
+
             lock (_client._lock)
             {
                 if (_ending)
@@ -414,7 +421,7 @@ public sealed partial class SignalClient
 
                 _client._state = SignalConnectionStateEnum.Connected;
                 _client.Notify(SignalConnectionStateEnum.Connected, reason: null);
-                Beat(Volatile.Read(ref _lastReceivedTicks));
+                Beat(sent, received, now: received);
             }
 
             return true;
@@ -594,8 +601,11 @@ public sealed partial class SignalClient
         // that has begun does nothing.
         private void OnTimer()
         {
-            // Read before the lock is taken, because the TimeProvider is code of the application.
-            long nowTicks = _client._timeProvider.GetUtcNow().UtcTicks;
+            // Read before the lock is taken, because the TimeProvider is code of the application. The timestamps of the
+            // traffic are read before the present one, so that no time since them is negative.
+            long sent = Volatile.Read(ref _lastSentTimestamp);
+            long received = Volatile.Read(ref _lastReceivedTimestamp);
+            long now = _client._timeProvider.GetTimestamp();
             bool began = false;
 
             lock (_client._lock)
@@ -605,7 +615,7 @@ public sealed partial class SignalClient
                     return;
                 }
 
-                if (!Beat(nowTicks))
+                if (!Beat(sent, received, now))
                 {
                     began = BeginEnd(NoTraffic);
                 }
@@ -617,35 +627,44 @@ public sealed partial class SignalClient
             }
         }
 
-        // Under the client's lock, with the time read before it: sends a PING when the client has sent nothing, or
-        // received nothing, for HeartbeatInterval, and at most one in that time, and arms the timer for the earlier of the
-        // next PING and the dead peer. False when nothing was received for DeadPeerTimeout: the host is dead.
-        private bool Beat(long nowTicks)
+        // Under the client's lock, with the timestamps of the last send and receive and the present one, read before it in
+        // that order: sends a PING when the client has sent nothing, or received nothing, for HeartbeatInterval, and at
+        // most one in that time, and arms the timer for the earlier of the next PING and the dead peer. False when nothing
+        // was received for DeadPeerTimeout: the host is dead.
+        private bool Beat(long sent, long received, long now)
         {
-            long received = Volatile.Read(ref _lastReceivedTicks);
-            long deadAt = received + _client._deadPeerTimeout.Ticks;
+            TimeSpan sinceReceived = _client._timeProvider.GetElapsedTime(received, now);
 
-            if (nowTicks >= deadAt)
+            if (sinceReceived >= _client._deadPeerTimeout)
             {
                 return false;
             }
 
-            long sent = Volatile.Read(ref _lastSentTicks);
-            long pingAt = Math.Max(Math.Min(sent, received), _lastPingTicks) + _client._heartbeatInterval.Ticks;
+            TimeSpan sinceSent = _client._timeProvider.GetElapsedTime(sent, now);
+            TimeSpan sincePing = _lastPingTimestamp is { } pinged
+                ? _client._timeProvider.GetElapsedTime(pinged, now)
+                : TimeSpan.MaxValue;
 
-            if (nowTicks >= pingAt)
+            // How long the connection has been quiet on the side that was quiet longer, unless a PING went out since.
+            TimeSpan quiet = sinceSent > sinceReceived ? sinceSent : sinceReceived;
+
+            if (sincePing < quiet)
             {
-                Write(LineFormatter.Ping(LineSpace()));
-                _lastPingTicks = nowTicks;
-                pingAt = nowTicks + _client._heartbeatInterval.Ticks;
+                quiet = sincePing;
             }
 
-            // Both instants lie ahead, at most DeadPeerTimeout away, so the due time is positive and within the longest
-            // timer.
-            var now = new DateTimeOffset(nowTicks, TimeSpan.Zero);
-            var due = new DateTimeOffset(Math.Min(pingAt, deadAt), TimeSpan.Zero);
+            if (quiet >= _client._heartbeatInterval)
+            {
+                Write(LineFormatter.Ping(LineSpace()));
+                _lastPingTimestamp = now;
+                quiet = TimeSpan.Zero;
+            }
 
-            _timer.Change(SignalChecks.TimeUntil(due, now)!.Value, Timeout.InfiniteTimeSpan);
+            // Both rests are positive and at most DeadPeerTimeout, so the due time is too.
+            TimeSpan untilPing = _client._heartbeatInterval - quiet;
+            TimeSpan untilDead = _client._deadPeerTimeout - sinceReceived;
+
+            _timer.Change(SignalChecks.DueTime(untilPing < untilDead ? untilPing : untilDead), Timeout.InfiniteTimeSpan);
 
             return true;
         }
@@ -704,7 +723,7 @@ public sealed partial class SignalClient
 
                     // A line counts as sent when it is handed to the socket. The host cannot read it before, so the
                     // instant is that at which the client wrote it unless the clock moved meanwhile.
-                    Volatile.Write(ref _lastSentTicks, _client._timeProvider.GetUtcNow().UtcTicks);
+                    Volatile.Write(ref _lastSentTimestamp, _client._timeProvider.GetTimestamp());
 
                     ReadOnlyMemory<byte> unsent = _sending.WrittenMemory;
 

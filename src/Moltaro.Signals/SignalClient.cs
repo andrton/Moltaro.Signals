@@ -35,13 +35,13 @@ public sealed partial class SignalClient : ISignals, IAsyncDisposable
     private const string NotOutstanding = "The host answered a request that is not outstanding.";
 
     // The one lock of the client. It guards _connection, _subscriptions, _lastId, _notifications, _notifying, _running,
-    // the change of _state and of _disposal, the wait fields of every subscription, and of every connection its output,
-    // its sets, its acceptance and its end. Under it the client runs no code of the application except, for deadlines and
-    // heartbeats, TimeProvider.CreateTimer with no due time and ITimer.Change with a positive one, so a TimeProvider does
-    // not call back inside them. Under it the client also appends a line to the output of its connection and starts the
-    // flush of that output, and starts the delivery of notifications, each on the thread pool and never inline. The clock
-    // is read before it is taken; waits and sets are completed, cancellations registered and sockets closed after it is
-    // released.
+    // _disposal, the change of _state, the wait fields of every subscription, and of every connection its output, its
+    // sets, its acceptance and its end. Under it the client runs no code of the application except, for deadlines and
+    // heartbeats, TimeProvider.CreateTimer with no due time, ITimer.Change with a positive one and
+    // TimeProvider.GetElapsedTime, which computes from two timestamps, so a TimeProvider does not call back inside them.
+    // Under it the client also appends a line to the output of its connection and starts the flush of that output, and
+    // starts the delivery of notifications, each on the thread pool and never inline. The clock is read before it is
+    // taken; waits and sets are completed, cancellations registered and sockets closed after it is released.
     private readonly Lock _lock = new();
 
     private readonly EndPoint _hostEndPoint;
@@ -87,7 +87,7 @@ public sealed partial class SignalClient : ISignals, IAsyncDisposable
 
     // Null until the client is disposed. The first DisposeAsync creates it under _lock and completes it once the loop of
     // the attempts has ended; a later call returns its task.
-    private volatile TaskCompletionSource? _disposal;
+    private TaskCompletionSource? _disposal;
 
     /// <summary>
     /// Creates a client of a host elsewhere. It does not connect: <see cref="Start"/> does, so that handlers of
@@ -202,8 +202,8 @@ public sealed partial class SignalClient : ISignals, IAsyncDisposable
     /// So <see cref="State"/> is <see cref="SignalConnectionStateEnum.Connected"/> before any
     /// <see cref="SignalWaitResultEnum.Joined"/> of that connection: the client sets it in the same step in which it
     /// writes the reopenings, and reads the host's answers to them only after that step. The notification of
-    /// <c>Connected</c> is not ordered against a <c>Joined</c>: each runs on the thread pool, and <see cref="State"/>
-    /// may have moved on by then.
+    /// <c>Connected</c> is not ordered against a <c>Joined</c>: its handler runs on the thread pool, apart from any
+    /// wait, and <see cref="State"/> may have moved on by the time either is seen.
     /// </para>
     /// <para>
     /// When the host refuses or no host answers, the client stays <see cref="SignalConnectionStateEnum.Disconnected"/>

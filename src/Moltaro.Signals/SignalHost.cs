@@ -564,7 +564,7 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
             }
 
             // Read before the lock is taken, because the TimeProvider is code of the application.
-            DateTimeOffset acceptedAt = _timeProvider.GetUtcNow();
+            long acceptedAt = _timeProvider.GetTimestamp();
             Connection? connection = null;
             bool disposed;
 
