@@ -2,9 +2,10 @@ using Moltaro.Signals.Delivery;
 
 namespace Moltaro.Signals.Tests.Delivery;
 
-// Hierarchical keys (concept D2) and the rules acting per (key, group) (concept section 3, rules 1 and 7), on signal
+// Hierarchical keys (concept D2) and the rules acting per (key, group) (concept section 3, rules 1, 2 and 7), on signal
 // delivery directly. A set of a key also sets each of its ancestors, the keys made of its leading segments, and never
-// a descendant; one group on a key and on an ancestor of it has separate members and separate pending signals on each.
+// a descendant, and counts each (key, group) among these keys once; one group on a key and on an ancestor of it has
+// separate members and separate pending signals on each.
 public sealed class AncestorTests
 {
     [Fact]
