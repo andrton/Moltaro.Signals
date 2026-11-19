@@ -10,7 +10,7 @@ delivered over several sprints.
 ## The repository as it is set up
 
 - `src` holds the build settings and the solution with the projects that `AGENTS.md`
-  lists; the measurement program comes with the second sprint of Epic 1.
+  lists.
 - The tests run on xUnit.net v3 and Microsoft.Testing.Platform, which `src/global.json`
   names as the test runner.
 - The rules of `main` and of release tags are files in `.github/rulesets`. GitHub applies

@@ -85,8 +85,9 @@
     <a href="signal-delivery.html">How a set wakes one member of each group on a key</a>.</p>
   <p class="status"><b>Status, 19 November 2026.</b> Built: sprint S5 of the first epic built the
     remote client, <code>SignalClient</code> used as <code>ISignals</code>, with everything this page
-    shows; the host has listened over TCP since sprint S3. The hosting package,
-    <code>Moltaro.Signals.Hosting</code>, is not built yet.</p>
+    shows; the host has listened over TCP since sprint S3. Sprint S6 built the hosting package,
+    <code>Moltaro.Signals.Hosting</code>, which registers the host or a client in a .NET generic
+    host.</p>
 
   <h2>The idea</h2>
   <blockquote>The host keeps its signals only in memory, and any connection can fail. Nothing is lost

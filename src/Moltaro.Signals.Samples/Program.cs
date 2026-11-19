@@ -1,22 +1,13 @@
 using System.Net;
 using Moltaro.Signals.Samples;
 
-// "dotnet run -- host" runs the standalone host until Ctrl+C. Without arguments every sample runs once, in order, and
-// says where it stops while a member it uses is not implemented yet.
+// "dotnet run -- host" runs the standalone host until Ctrl+C. Without arguments every sample runs once, in order.
 if (args is ["host"])
 {
-    using var stop = new CancellationTokenSource();
-
-    Console.CancelKeyPress += (_, press) =>
-    {
-        press.Cancel = true;
-        stop.Cancel();
-    };
-
     await RunSampleAsync(
         "A standalone host, until Ctrl+C",
         cancellationToken => StandaloneHost.RunAsync(new IPEndPoint(IPAddress.Loopback, 7420), cancellationToken),
-        stop.Token);
+        CancellationToken.None);
 
     return;
 }
@@ -52,14 +43,5 @@ static async Task RunSampleAsync(string title, Func<CancellationToken, Task> sam
     Console.WriteLine();
     Console.WriteLine($"== {title}");
 
-    try
-    {
-        await sample(cancellationToken);
-    }
-    catch (NotSupportedException)
-    {
-        // The contract exists before its implementation: a member that is not implemented yet refuses. The last line
-        // the sample wrote says how far it came.
-        Console.WriteLine("Stops here: not implemented yet.");
-    }
+    await sample(cancellationToken);
 }

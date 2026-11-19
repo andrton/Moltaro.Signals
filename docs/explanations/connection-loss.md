@@ -10,7 +10,8 @@ connection holds is the first explanation,
 
 **Status, 19 November 2026.** Built: sprint S5 of the first epic built the remote client,
 `SignalClient` used as `ISignals`, with everything this page shows; the host has listened
-over TCP since sprint S3. The hosting package, `Moltaro.Signals.Hosting`, is not built yet.
+over TCP since sprint S3. Sprint S6 built the hosting package, `Moltaro.Signals.Hosting`,
+which registers the host or a client in a .NET generic host.
 
 ## The idea
 

@@ -13,7 +13,7 @@ public sealed class HostRegistrationTests
 {
     private static IPEndPoint AnyLoopbackPort => new(IPAddress.Loopback, 0);
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task ISignals_resolves_to_the_registered_host()
     {
         var services = new ServiceCollection();
@@ -27,7 +27,27 @@ public sealed class HostRegistrationTests
         Assert.Same(provider.GetRequiredService<SignalHost>(), provider.GetRequiredService<ISignals>());
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
+    public async Task Configure_runs_when_the_host_is_first_resolved_and_wrong_options_throw_there()
+    {
+        var services = new ServiceCollection();
+        bool configured = false;
+
+        // Leaves ListenEndPoint unset, which the constructor of the host refuses.
+        services.AddSignalHost(options =>
+        {
+            configured = true;
+            options.Token = LoopbackOptions.Token;
+        });
+        bool configuredByTheCall = configured;
+        await using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.Throws<ArgumentException>("ListenEndPoint", () => provider.GetRequiredService<SignalHost>());
+        Assert.False(configuredByTheCall);
+        Assert.True(configured);
+    }
+
+    [Fact]
     public async Task A_hosted_service_registered_after_AddSignalHost_finds_the_port_bound_when_it_starts()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -43,7 +63,7 @@ public sealed class HostRegistrationTests
         await app.StopAsync(cancellationToken);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_port_that_cannot_be_bound_fails_the_start_of_the_application()
     {
         using var occupant = new TcpListener(IPAddress.Loopback, 0);
@@ -53,7 +73,7 @@ public sealed class HostRegistrationTests
         await Assert.ThrowsAsync<SocketException>(() => app.StartAsync(TestContext.Current.CancellationToken));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_host_outlives_the_hosted_services_and_is_disposed_with_the_container()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -69,7 +89,7 @@ public sealed class HostRegistrationTests
         Assert.Equal(SignalConnectionStateEnum.Disconnected, host.State);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_host_writes_an_Information_line_with_LocalEndPoint_when_it_listens()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
