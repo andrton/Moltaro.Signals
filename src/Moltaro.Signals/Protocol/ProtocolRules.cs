@@ -2,8 +2,7 @@ namespace Moltaro.Signals.Protocol;
 
 // The rules of the protocol that the host, its clients and the codec share, as docs/protocol.md fixes them: its version,
 // the rules of names and of the token, and the bounds of an id, a text and a line, so that every side checks the same
-// limits. It knows nothing of signal delivery or sockets. Plain comments, not XML documentation, keep these internal
-// rules out of the documentation file of the package.
+// limits. It knows nothing of signal delivery or sockets.
 internal static class ProtocolRules
 {
     internal const int MaxNameLength = 128;

@@ -56,6 +56,7 @@ public sealed partial class SignalHost
         // The open members by their <sid>. Guarded by the host's lock.
         private readonly Dictionary<long, RemoteMember> _members = [];
 
+        // FlushAsync as a delegate made once, so that starting a flush makes no new delegate.
         private readonly Func<Task> _flushAsync;
 
         private readonly TaskCompletionSource _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -114,19 +115,14 @@ public sealed partial class SignalHost
             }
         }
 
-        // Under the host's lock: begins the end of the connection, unless it has begun. A refusal writes its ERR 0 line,
-        // the last output the connection takes. True when this call began the end; the caller then runs FinishEndAsync
-        // after the lock.
-        internal bool BeginEnd(ProtocolErrorEnum? refusal, string? text)
+        // Under the host's lock: begins the end of the connection, unless it has begun; after the section that begins it,
+        // it takes no more lines and no more output. True when this call began the end; the caller then runs
+        // FinishEndAsync after the lock.
+        internal bool BeginEnd()
         {
             if (_ending)
             {
                 return false;
-            }
-
-            if (refusal is { } code)
-            {
-                Write(LineFormatter.Error(LineSpace(), 0, code, text!));
             }
 
             _ending = true;
@@ -162,17 +158,7 @@ public sealed partial class SignalHost
                     // for DeadPeerTimeout at most.
                     _timer.Change(_host._deadPeerTimeout, Timeout.InfiniteTimeSpan);
 
-                    Task? flush;
-
-                    lock (_host._lock)
-                    {
-                        flush = _flush;
-                    }
-
-                    if (flush is not null)
-                    {
-                        await flush.ConfigureAwait(false);
-                    }
+                    await WhenSent().ConfigureAwait(false);
 
                     // After a shutdown a socket is closed normally, even with a receive pending.
                     try
@@ -231,6 +217,16 @@ public sealed partial class SignalHost
             }
         }
 
+        // Completes when the output written so far has been sent, with any written meanwhile, or when a send failed and
+        // ended the connection: the flush that runs, or a completed task when none does.
+        private Task WhenSent()
+        {
+            lock (_host._lock)
+            {
+                return _flush ?? Task.CompletedTask;
+            }
+        }
+
         // Receives, stores the time, and handles every complete line before it receives again, once the output is sent.
         private async Task ReadAsync()
         {
@@ -272,17 +268,7 @@ public sealed partial class SignalHost
                 _received.AsSpan(consumed, filled - consumed).CopyTo(_received);
                 filled -= consumed;
 
-                Task? flush;
-
-                lock (_host._lock)
-                {
-                    flush = _flush;
-                }
-
-                if (flush is not null)
-                {
-                    await flush.ConfigureAwait(false);
-                }
+                await WhenSent().ConfigureAwait(false);
             }
         }
 
@@ -345,7 +331,10 @@ public sealed partial class SignalHost
 
         private bool HandleHello(ReadOnlySpan<byte> token)
         {
-            bool accepted = CryptographicOperations.FixedTimeEquals(token, _host._token);
+            if (!CryptographicOperations.FixedTimeEquals(token, _host._token))
+            {
+                return Refuse(ProtocolErrorEnum.Token, OtherToken);
+            }
 
             lock (_host._lock)
             {
@@ -354,22 +343,8 @@ public sealed partial class SignalHost
                     return false;
                 }
 
-                if (!accepted)
-                {
-                    BeginEnd(ProtocolErrorEnum.Token, OtherToken);
-                }
-                else
-                {
-                    _helloAccepted = true;
-                    Write(LineFormatter.Ok(LineSpace(), 0));
-                }
-            }
-
-            if (!accepted)
-            {
-                _ = FinishEndAsync(refused: true);
-
-                return false;
+                _helloAccepted = true;
+                Write(LineFormatter.Ok(LineSpace(), 0));
             }
 
             _host._connections.Add(1);
@@ -398,7 +373,7 @@ public sealed partial class SignalHost
 
                 if (open)
                 {
-                    BeginEnd(ProtocolErrorEnum.Protocol, SidOpen);
+                    BeginRefusal(ProtocolErrorEnum.Protocol, SidOpen);
                 }
                 else if (_members.Count >= _host._maxSubscriptionsPerConnection)
                 {
@@ -450,7 +425,7 @@ public sealed partial class SignalHost
 
                 if (armed)
                 {
-                    BeginEnd(ProtocolErrorEnum.Protocol, MemberArmed);
+                    BeginRefusal(ProtocolErrorEnum.Protocol, MemberArmed);
                 }
                 else if (_host._delivery.Arm(member))
                 {
@@ -566,6 +541,21 @@ public sealed partial class SignalHost
             return true;
         }
 
+        // Under the host's lock: begins the end of the connection with a refusal, unless its end has begun. Its ERR 0 line
+        // is the last output the connection takes. True when this call began the end; the caller then runs
+        // FinishEndAsync(refused: true) after the lock.
+        private bool BeginRefusal(ProtocolErrorEnum code, string text)
+        {
+            if (!BeginEnd())
+            {
+                return false;
+            }
+
+            Write(LineFormatter.Error(LineSpace(), 0, code, text));
+
+            return true;
+        }
+
         // Refuses the connection with its ERR 0 line, unless its end has begun. Returns false, for the line that ends it.
         private bool Refuse(ProtocolErrorEnum code, string text)
         {
@@ -573,7 +563,7 @@ public sealed partial class SignalHost
 
             lock (_host._lock)
             {
-                began = BeginEnd(code, text);
+                began = BeginRefusal(code, text);
             }
 
             if (began)
@@ -591,7 +581,7 @@ public sealed partial class SignalHost
 
             lock (_host._lock)
             {
-                began = BeginEnd(refusal: null, text: null);
+                began = BeginEnd();
             }
 
             if (began)
@@ -678,18 +668,18 @@ public sealed partial class SignalHost
             // Read before the lock is taken, because the TimeProvider is code of the application.
             DateTimeOffset now = _host._timeProvider.GetUtcNow();
             bool ending;
-            bool refused;
+            bool beforeHello;
 
             lock (_host._lock)
             {
                 ending = _ending;
-                refused = !_helloAccepted;
+                beforeHello = !_helloAccepted;
 
                 if (!ending)
                 {
-                    long from = refused ? _acceptedTicks : Volatile.Read(ref _lastReceivedTicks);
-                    var deadline = new DateTimeOffset(from, TimeSpan.Zero);
-                    TimeSpan? rest = TimeUntil(deadline + _host._deadPeerTimeout, now);
+                    long silentSince = beforeHello ? _acceptedTicks : Volatile.Read(ref _lastReceivedTicks);
+                    DateTimeOffset deadline = new DateTimeOffset(silentSince, TimeSpan.Zero) + _host._deadPeerTimeout;
+                    TimeSpan? rest = SignalChecks.TimeUntil(deadline, now);
 
                     if (rest != TimeSpan.Zero)
                     {
@@ -699,7 +689,14 @@ public sealed partial class SignalHost
                         return;
                     }
 
-                    BeginEnd(refused ? ProtocolErrorEnum.Protocol : null, refused ? NoHello : null);
+                    if (beforeHello)
+                    {
+                        BeginRefusal(ProtocolErrorEnum.Protocol, NoHello);
+                    }
+                    else
+                    {
+                        BeginEnd();
+                    }
                 }
             }
 
@@ -709,7 +706,7 @@ public sealed partial class SignalHost
             }
             else
             {
-                _ = FinishEndAsync(refused);
+                _ = FinishEndAsync(refused: beforeHello);
             }
         }
     }

@@ -397,7 +397,7 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
             // CloseAll removed. The host writes nothing more on any of them.
             for (int index = 0; index < connections.Length; index++)
             {
-                endBegun[index] = connections[index].BeginEnd(refusal: null, text: null);
+                endBegun[index] = connections[index].BeginEnd();
             }
         }
 
@@ -502,23 +502,6 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
         {
             remote.Signal();
         }
-    }
-
-    // The due time of a timer for a deadline, rounded up to whole milliseconds, because a timer counts whole
-    // milliseconds and would otherwise fire before the deadline. Zero when the deadline has come; null when it is
-    // further away than the longest timer, where it counts as none.
-    private static TimeSpan? TimeUntil(DateTimeOffset deadline, DateTimeOffset now)
-    {
-        long ticks = (deadline - now).Ticks;
-
-        if (ticks <= 0)
-        {
-            return TimeSpan.Zero;
-        }
-
-        TimeSpan due = TimeSpan.FromMilliseconds((ticks + TimeSpan.TicksPerMillisecond - 1) / TimeSpan.TicksPerMillisecond);
-
-        return due <= SignalChecks.LongestTimer ? due : null;
     }
 
     // After the lock: answers a connection beyond MaxConnections with ERR 0 connections in one synchronous send, which

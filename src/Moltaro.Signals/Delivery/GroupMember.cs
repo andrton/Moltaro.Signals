@@ -12,11 +12,8 @@ internal class GroupMember
     // chain of in-process members that the host links under its lock. A chain ends with null.
     //
     // SignalDelivery.Set and SignalDelivery.CloseAll write it, for the members they take out of Waiting;
-    // SignalDelivery.Close leaves it. The host writes it too, under its lock: it walks a chain there, answers the
-    // remote members with their SIG, and relinks the in-process members into a chain of their own, which it completes
-    // after the lock. The first chain is not walked after the lock: a remote member answered under the lock can be
-    // woken again on another connection before that walk reaches it, which relinks it, and the walk would skip the
-    // members behind it.
+    // SignalDelivery.Close leaves it. The host writes it too, under its lock, when it relinks the in-process members
+    // of the chain of a set into a chain of their own; SignalHost.AnswerRemoteMembers says why.
     //
     // The host reads a member's NextWoken before it completes that member's wait: once completed, the member may wait
     // and be woken again, which relinks it.
