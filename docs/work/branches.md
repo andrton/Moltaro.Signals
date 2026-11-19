@@ -97,13 +97,12 @@ only documents: a required check that does not run would block the pull request.
 
 - **Versions** follow semantic versioning. Until a first production adopter runs on the
   library, the version is `0.x.y`, and a release is a regular version, not a pre-release
-  (concept D13, D15). Nothing is tagged before the first epic delivers a working library.
+  (concept D13, D15).
 - **A release is made by the owner**, or by an agent that the owner tells to make it, for
-  that version: with `main` green, tag the commit and push the tag. A standing permission
-  does not cover it. The [Publish](../../.github/workflows/publish.yml) workflow builds,
-  tests and packs that commit and pushes the packages to nuget.org; it refuses a tag that
-  is not on `main`. There is no stored API key: the workflow signs in through nuget.org
-  Trusted Publishing.
+  that version: with `main` green, tag the commit and push the tag. The
+  [Publish](../../.github/workflows/publish.yml) workflow builds, tests and packs that
+  commit and pushes the packages to nuget.org; it refuses a tag that is not on `main`.
+  There is no stored API key: the workflow signs in through nuget.org Trusted Publishing.
 - **A release tag is permanent.** The ruleset in
   [`.github/rulesets/release-tags.json`](../../.github/rulesets/release-tags.json) refuses
   moving or deleting a `v*` tag. A wrong release is followed by a new version, never by a

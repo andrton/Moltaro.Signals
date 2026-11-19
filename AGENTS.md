@@ -160,8 +160,9 @@ tests that state its behavior. Implementation follows.
   validating a key, a group or an option.
 - When the implementation arrives it has to pass the tests that were written for the
   contract. Do not weaken or delete a test to get a green run.
-- Nothing has been released. There are no compatibility shims: when something is replaced,
-  remove the old code, tests and documentation in the same change.
+- Versions stay 0.x until a first production adopter runs on the library (concept D13),
+  so there are no compatibility shims: when something is replaced, remove the old code,
+  tests and documentation in the same change.
 - The protocol is part of the contract. Its grammar lives in `docs/protocol.md`, written
   with the sprint that introduces it, and its version is part of `HELLO`.
 

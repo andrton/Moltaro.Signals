@@ -34,7 +34,7 @@ One file per epic, `epic-<number>-<short-name>.md`, with these parts:
 1. **Goal** — the result and who it is for.
 2. **Scope** — what is included and what is deliberately left out.
 3. **Requirements** — numbered `R1`, `R2`, …; each says what is needed, what needs it and
-   whether it exists today. Other documents refer to them as "Epic 1 R3".
+   whether it exists today. Other documents refer to them as "Epic 2 R3".
 4. **Acceptance** — how we know the epic is done.
 5. **Open questions** — decisions that are not made yet, each with the options.
 6. **Sprints** — the order of work, without dates. An epic that is ready to be carried out
