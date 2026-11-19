@@ -25,7 +25,7 @@ as it closes instead of waiting for the whole epic.
 | --- | --- | --- | --- | --- |
 | `main` | — | The integrated, green state; the source of every release | Always | — |
 | `epic-<n>/sprint-<nn>-<name>` | `main` | One sprint of an epic, on the full or the refactoring track | Until the sprint closes | Pull request, squash |
-| `fix/<name>`, `docs/<name>`, `chore/<name>` | `main` | The light track: a fix, a document, repository upkeep | A day or two | Pull request, squash |
+| `fix/<name>`, `docs/<name>`, `chore/<name>` | `main` | The light track: a fix, a document, repository upkeep; under `chore/`, also a refactoring sprint while no epic is open | A day or two | Pull request, squash |
 
 Examples: `epic-1/sprint-03-protocol-codec`, `fix/heartbeat-timeout`,
 `docs/branching`.
@@ -103,6 +103,9 @@ only documents: a required check that does not run would block the pull request.
   [Publish](../../.github/workflows/publish.yml) workflow builds, tests and packs that
   commit and pushes the packages to nuget.org; it refuses a tag that is not on `main`.
   There is no stored API key: the workflow signs in through nuget.org Trusted Publishing.
+- **A local build** takes its version from `<Version>` in `src/Directory.Build.props`. The
+  change that prepares a release sets it to the next patch with `-dev`, for example
+  `0.1.2-dev` for 0.1.1, so that a local build never sorts below a release.
 - **A release tag is permanent.** The ruleset in
   [`.github/rulesets/release-tags.json`](../../.github/rulesets/release-tags.json) refuses
   moving or deleting a `v*` tag. A wrong release is followed by a new version, never by a
