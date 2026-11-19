@@ -6,7 +6,7 @@ Made for the case where a message broker is used only as a wake-up doorbell.
 
 ## Status
 
-Built, not published yet. Both packages work as their documentation says:
+Version 0.1.0, the first release. Both packages work as their documentation says:
 
 - `SignalHost` is `ISignals` inside its own process, with every rule of signal delivery,
   deadlines, cancellation and the metrics below. After `Start` it listens over TCP and
@@ -205,12 +205,25 @@ dotnet test
 
 ## Package
 
-Planned: the packages `Moltaro.Signals` and `Moltaro.Signals.Hosting` on
-[nuget.org](https://www.nuget.org), published by the
+The packages are on nuget.org from version 0.1.0:
+[Moltaro.Signals](https://www.nuget.org/packages/Moltaro.Signals), which depends on nothing
+outside .NET, and [Moltaro.Signals.Hosting](https://www.nuget.org/packages/Moltaro.Signals.Hosting),
+which registers the host or a client in a .NET generic host and brings `Moltaro.Signals`
+with it.
+
+```bash
+dotnet add package Moltaro.Signals
+```
+
+```bash
+dotnet add package Moltaro.Signals.Hosting
+```
+
+They are published by the
 [Publish](https://github.com/andrton/Moltaro.Signals/blob/main/.github/workflows/publish.yml)
-workflow when a version tag is pushed. Nothing is published yet.
-[Branches and releases](https://github.com/andrton/Moltaro.Signals/blob/main/docs/work/branches.md)
-describes how work reaches `main` and how a version is released.
+workflow when a version tag is pushed;
+[branches and releases](https://github.com/andrton/Moltaro.Signals/blob/main/docs/work/branches.md)
+describes how a version is released.
 
 ## License
 
