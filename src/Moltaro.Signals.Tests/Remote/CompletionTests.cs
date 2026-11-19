@@ -8,6 +8,8 @@ namespace Moltaro.Signals.Tests.Remote;
 public sealed class CompletionTests
 {
     // The member's WaitAsync is called before the first set, so its WAIT reaches the host first and the set wakes it.
+    // The set starts on the thread pool: its answer may arrive before its await, which then continues synchronously,
+    // and the code after it would block the test's own thread before the test releases it.
     [Fact]
     public async Task Another_set_of_a_client_completes_while_the_code_after_its_awaited_wait_and_set_is_blocked()
     {
@@ -23,7 +25,7 @@ public sealed class CompletionTests
         using var release = new ManualResetEventSlim();
 
         Task<SignalWaitResultEnum> pass = WaitThenBlockAsync(lane, waitBlocked, release, cancellationToken);
-        Task<SignalSetResult> set = SetThenBlockAsync(client, setBlocked, release, cancellationToken);
+        Task<SignalSetResult> set = Task.Run(() => SetThenBlockAsync(client, setBlocked, release, cancellationToken));
         await waitBlocked.Task.WaitAsync(cancellationToken);
         await setBlocked.Task.WaitAsync(cancellationToken);
 
