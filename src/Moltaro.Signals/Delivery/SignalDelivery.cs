@@ -25,8 +25,6 @@ internal sealed class SignalDelivery
     // Every open member, so that CloseAll reaches the members that do not wait as well.
     private readonly HashSet<GroupMember> _members = [];
 
-    private int _groupCount;
-
     internal SignalDelivery()
     {
         _keysBySpan = _keys.GetAlternateLookup<ReadOnlySpan<char>>();
@@ -35,8 +33,8 @@ internal sealed class SignalDelivery
     // The number of keys it holds.
     internal int KeyCount => _keys.Count;
 
-    // The number of (key, group) pairs it holds.
-    internal int GroupCount => _groupCount;
+    // The number of (key, group) pairs it holds, counted when it is asked for: only the tests of rule 3 ask.
+    internal int GroupCount => _keys.Values.Sum(groups => groups.Count);
 
     // Adds a new member of a group on a key. The member is Busy, because joining counts as a signal (rule 6). The
     // caller has checked that the key and the group are names.
@@ -54,7 +52,6 @@ internal sealed class SignalDelivery
         {
             keyGroup = new KeyGroup(key, group);
             groups.Add(keyGroup);
-            _groupCount++;
         }
 
         keyGroup.MemberCount++;
@@ -216,7 +213,6 @@ internal sealed class SignalDelivery
 
         _members.Clear();
         _keys.Clear();
-        _groupCount = 0;
 
         return firstWaited;
     }
@@ -262,7 +258,6 @@ internal sealed class SignalDelivery
         List<KeyGroup> groups = _keys[keyGroup.Key];
 
         groups.Remove(keyGroup);
-        _groupCount--;
 
         if (groups.Count == 0)
         {
