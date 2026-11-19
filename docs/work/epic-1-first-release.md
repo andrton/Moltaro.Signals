@@ -614,8 +614,9 @@ The `ISignals` of a process other than the host's, over one persistent TCP conne
   the token and ends within `DeadPeerTimeout`. When the host accepts, the client sends the
   reopening of every open subscription and only then reports `Connected`, so a request
   made after the change to `Connected` reaches the host after those subscriptions; each
-  subscription is open, and its wait returns `Joined`, once the host answered it. When
-  the host refuses or no host answers, the client stays `Disconnected` and tries again
+  subscription is open, and its wait returns `Joined`, once the host answered it.
+  `State` is `Connected` before any `Joined` of that connection; the notification of
+  `Connected` is not ordered against it. When the host refuses or no host answers, the client stays `Disconnected` and tries again
   with backoff. Errors: `InvalidOperationException` when started before;
   `ObjectDisposedException`.
 - **Liveness.** While connected, the client sends `PING` when it has sent nothing, or
@@ -1501,32 +1502,52 @@ approval of this plan, with PQ2 and PQ3 answered.
 
 - **Goal.** Code in another process uses `ISignals` with the same semantics as in the host
   process: a client connects, sets without ever waiting for a connection, subscribes and
-  waits, knows
-  within seconds when the host is gone, reconnects by itself and returns `Joined` to
-  every member afterwards.
+  waits, knows within seconds when the host is gone, reconnects by itself and returns
+  `Joined` to every member afterwards.
 - **Contract.**
   - *Public, from S1, now working:* every member of `SignalClient` and of its
     subscriptions, by the rules of [Notifications](#notifications) for `StateChanged`.
-  - *Internal:* none is expected. The tests use the public API, and raw protocol lines
-    for a test host that misbehaves on purpose or holds back its answers. If the study
-    proposes internal types that tests should address, the planner writes them into this
-    brief and the coordinator approves them after the independent review (O12) before
-    the contract step; the contract author's work is then committed after the
-    coordinator's approval. Without such types the sprint has no contract step.
-- **Study.** Sources, for example: the connection, reconnection and ping handling of the
-  NATS .NET client (Apache-2.0); the heartbeats and connection events of
-  StackExchange.Redis (MIT); how Microsoft.Data.SqlClient (MIT) confirms the cancellation
-  of a running command with the server. Questions:
-  1. How requests share one connection: correlating replies, completing callers outside
-     locks and off the connection's reader, what happens to the requests in flight when
-     the connection drops.
-  2. When a heartbeat is sent and what counts as traffic, with `TimeProvider`.
-  3. How the client reconnects and reopens its subscriptions before the change to
-     `Connected`, and how backoff is timed.
-  4. How ending a wait with `UNWAIT` is decided against a `SIG` that crosses it.
-  5. How notifications are delivered in order, outside locks, without the connection
-     waiting for a handler and without a dispose waiting for one.
-  6. How one attempt, TCP connect and `HELLO`, is bounded by `DeadPeerTimeout`.
+  - *Internal:* none. The tests use the public API, and raw protocol lines for a test
+    host that misbehaves on purpose or holds back its answers. So S5 has no contract
+    step: the tests step comes first. The implementer writes in the documentation of
+    `SignalClient.Start` the decided sentence of Q1 of the
+    [open questions](open-questions.md): `State` is `Connected` before any `Joined` of
+    that connection, and the notification of `Connected` is not ordered against it.
+- **Study** (done, ideas only, `THIRD-PARTY-NOTICES.md` unchanged; the public contract and
+  the protocol need no change). Sources at pinned commits: nats-io/nats.net v3.4.0
+  (`b268b35f9cbd0537088781a78596badcfe5c174c`, Apache-2.0); StackExchange.Redis 3.4.35
+  (`510f791e70158665d7e8207c84d32d0a2b2a2792`, MIT); dotnet/SqlClient v7.1.2
+  (`b1dd9db72cd9e6eb9fc83ca308558e73b57dd449`, MIT). Decisions the implementer and the
+  test author share:
+  - **Replies** are matched by `<rid>` and `<sid>`, taken from one counter of the client
+    and never reused; a subscription keeps its `<sid>` across connections.
+  - **The gate.** Replies are matched, and requests added, only under the client's lock
+    while the connection is not ending. The section that begins the end takes out the
+    pending sets, which complete with `Unavailable` after the lock.
+  - **Completions** go through a `TaskCompletionSource` with
+    `RunContinuationsAsynchronously`, after the lock.
+  - **Unknown ids.** An id the client does not know is ignored. An answer for a known
+    `<sid>` with nothing outstanding closes the connection with a reason.
+  - **One timer per connection**, re-armed for the earlier of the dead peer at the last
+    receive plus `DeadPeerTimeout` and the `PING` when it is due. Any bytes received are
+    traffic; no `PING` goes before `OK 0`.
+  - **Reconnecting.** One loop on the thread pool runs the attempts. The backoff doubles
+    up to `MaxReconnectDelay`, is reset by an accepted attempt and is waited through the
+    `TimeProvider`. One attempt, connect plus the answer to `HELLO`, is bounded by one
+    `CancellationTokenSource(DeadPeerTimeout, TimeProvider)`.
+  - **`Connected` and `Joined`** (Q1). On `OK 0`, one section under the lock writes every
+    reopening `SUB`, sets `Connected` and queues the notification; the reader handles an
+    `OK <sid>` only after that section.
+  - **`UNWAIT`** is appended under the lock. A crossing `SIG` sets a flag, and the wait
+    completes at `OK <sid>`, with `Signaled` if the flag is set.
+  - **Notifications** are queued under the lock in the order of the changes and drained by
+    one thread-pool work item. Handler exceptions are unhandled; a dispose does not wait
+    for a handler.
+  - **Placement.** Nested types of `SignalClient`, in `Outer.Nested.cs` files. The client
+    reads without waiting for its flush, since its output is bounded by its outstanding
+    requests.
+  - **Limitations.** The notification queue grows only while a handler blocks. On Unix a
+    name lookup can outlive an attempt; the client stops waiting at the deadline.
 - **To read.** [Concept](../concept.md), §3, §4, §6, §11 (18 November 2026);
   `docs/protocol.md` as S3 committed it; `AGENTS.md`, principles 2–9; this plan, "The
   public contract".

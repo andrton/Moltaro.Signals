@@ -40,16 +40,17 @@ An entry is numbered `Q1`, `Q2`, … and keeps its number for good:
 
 ## Open
 
+None.
+
+## Answered
+
 ### Q1. `Connected` and `Joined` of a subscription opened while connecting
 
 | | |
 | --- | --- |
 | **Found** | 18 November 2026, Epic 1, S1, by the test author |
 | **Question** | When a client connects, it sends the openings of its subscriptions and then reports `Connected`; a subscription returns `Joined` once the host answered its opening. Is `State` already `Connected` when such a `Joined` returns, or may the `Joined` come first? |
-| **Until answered** | The remote tests of S1 that subscribe and set on one client wait for `Connected` through `StateChanged` before they set |
-| **Decides** | The planner, by the rules of the contract; to be answered before S5 starts |
-
-## Answered
+| **Answer** | The planner, 19 November 2026, at the start of Epic 1, S5: `State` is `Connected` before any `Joined` of that connection can be decided. `Connected` is set in the same section under the client's lock that writes the reopening `SUB`s, and the reader handles an `OK <sid>` only after that section. The notification of `Connected` is not ordered against the `Joined`: each runs on the thread pool, and `State` may have moved on by then. The rule lives in the brief of S5 and in the documentation of `SignalClient.Start` |
 
 ### Q2. A time limit for a test run that hangs
 
