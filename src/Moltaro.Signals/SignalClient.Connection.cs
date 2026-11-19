@@ -26,6 +26,16 @@ public sealed partial class SignalClient
     {
         private const int BufferLength = 4096;
 
+        // The fixed sentences of the reasons of Disconnected, beside the code and text of a refusal by the host and the
+        // reason of a line of the host that breaks the grammar.
+        private const string ClosedByHost = "The host closed the connection.";
+
+        private const string NoTraffic = "Nothing came from the host for DeadPeerTimeout.";
+
+        private const string ConnectionFailed = "The connection to the host failed.";
+
+        private const string NotOutstanding = "The host answered a request that is not outstanding.";
+
         private readonly SignalClient _client;
 
         private readonly Socket _socket;
