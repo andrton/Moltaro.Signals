@@ -65,11 +65,12 @@ public sealed partial class SignalHost : ISignals, IAsyncDisposable
     // The one lock of the host. It guards _delivery, the change of _disposal and of _listener, the wait fields of every
     // subscription, _openConnections, and of every connection its members, its pending output, its flush and the state
     // of its end. Under it the host runs no code of the application except, for deadlines and connections,
-    // TimeProvider.CreateTimer and ITimer.Change, with a positive due time, so a TimeProvider does not call back inside
-    // them, and the timer's own lock is taken inside this one, never the other way round. Under it the host also
-    // appends a line to the output of a connection, in the section that decided it, and starts the flush of that output
-    // on the thread pool, which runs nothing inline; the send itself stays outside. Waits are completed, measurements
-    // recorded, cancellations registered and sockets closed after it is released.
+    // TimeProvider.CreateTimer and ITimer.Change, with a positive due time, and TimeProvider.GetElapsedTime, which
+    // computes from two timestamps, so a TimeProvider does not call back inside them, and the timer's own lock is taken
+    // inside this one, never the other way round. Under it the host also appends a line to the output of a connection,
+    // in the section that decided it, and starts the flush of that output on the thread pool, which runs nothing inline;
+    // the send itself stays outside. Waits are completed, measurements recorded, cancellations registered and sockets
+    // closed after it is released.
     private readonly Lock _lock = new();
 
     private readonly SignalDelivery _delivery = new();

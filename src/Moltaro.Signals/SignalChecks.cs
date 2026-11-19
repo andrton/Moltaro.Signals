@@ -3,7 +3,7 @@ using Moltaro.Signals.Protocol;
 namespace Moltaro.Signals;
 
 // The argument checks that the public members of the host and of the client share, so that each lives once, and the
-// longest timer of TimeProvider with the due times of timers. Each check reports the ParamName it is given.
+// longest timer of TimeProvider with the times and due times of timers. Each check reports the ParamName it is given.
 internal static class SignalChecks
 {
     // The longest timer of TimeProvider: the most a TimeSpan option may be, and the bound beyond which a deadline of
@@ -17,6 +17,15 @@ internal static class SignalChecks
         TimeSpan due = DueTime(deadline - now);
 
         return due <= LongestTimer ? due : null;
+    }
+
+    // The time from timestamp to now, both timestamps of timeProvider; zero when timestamp is the later one, as when
+    // another thread took it after now was read.
+    internal static TimeSpan Elapsed(TimeProvider timeProvider, long timestamp, long now)
+    {
+        TimeSpan elapsed = timeProvider.GetElapsedTime(timestamp, now);
+
+        return elapsed > TimeSpan.Zero ? elapsed : TimeSpan.Zero;
     }
 
     // The due time of a timer that is to fire once rest has passed, rounded up to whole milliseconds, because a timer

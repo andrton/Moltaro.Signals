@@ -667,12 +667,8 @@ public sealed partial class SignalHost
         // of an ending connection disposes its socket.
         private void OnTimer()
         {
-            // Read before the lock is taken, because the TimeProvider is code of the application. The last receive is read
-            // before the present timestamp, so that the time since it is never negative.
-            long lastReceived = Volatile.Read(ref _lastReceivedTimestamp);
+            // Read before the lock is taken, because the TimeProvider is code of the application.
             long now = _host._timeProvider.GetTimestamp();
-            TimeSpan sinceAccept = _host._timeProvider.GetElapsedTime(_acceptedTimestamp, now);
-            TimeSpan sinceReceive = _host._timeProvider.GetElapsedTime(lastReceived, now);
             bool ending;
             bool beforeHello;
 
@@ -683,7 +679,10 @@ public sealed partial class SignalHost
 
                 if (!ending)
                 {
-                    TimeSpan rest = _host._deadPeerTimeout - (beforeHello ? sinceAccept : sinceReceive);
+                    // The last receive is read here, so that a HELLO handled meanwhile counts with the receive that
+                    // brought it; one taken after the present counts as taken at it.
+                    long silentSince = beforeHello ? _acceptedTimestamp : Volatile.Read(ref _lastReceivedTimestamp);
+                    TimeSpan rest = _host._deadPeerTimeout - SignalChecks.Elapsed(_host._timeProvider, silentSince, now);
 
                     if (rest > TimeSpan.Zero)
                     {

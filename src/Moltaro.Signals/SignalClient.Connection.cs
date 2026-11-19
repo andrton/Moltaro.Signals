@@ -398,13 +398,9 @@ public sealed partial class SignalClient
         // OK 0. In one section the attempt is accepted, every open subscription is opened on it, the client becomes
         // Connected and its notification is queued. The reader handles the answers to these SUBs only after this section,
         // so no Joined of the connection is decided before Connected (open question Q1). The timer is armed for the first
-        // heartbeat, counted from the HELLO and from this answer: the timestamp of the HELLO is read before the SUBs are
-        // written, and the present is that of this answer.
+        // heartbeat, counted from the HELLO and from this answer, whose receive is the present.
         private bool Accept()
         {
-            long sent = Volatile.Read(ref _lastSentTimestamp);
-            long received = Volatile.Read(ref _lastReceivedTimestamp);
-
             lock (_client._lock)
             {
                 if (_ending)
@@ -421,7 +417,7 @@ public sealed partial class SignalClient
 
                 _client._state = SignalConnectionStateEnum.Connected;
                 _client.Notify(SignalConnectionStateEnum.Connected, reason: null);
-                Beat(sent, received, now: received);
+                Beat(Volatile.Read(ref _lastReceivedTimestamp));
             }
 
             return true;
@@ -601,10 +597,7 @@ public sealed partial class SignalClient
         // that has begun does nothing.
         private void OnTimer()
         {
-            // Read before the lock is taken, because the TimeProvider is code of the application. The timestamps of the
-            // traffic are read before the present one, so that no time since them is negative.
-            long sent = Volatile.Read(ref _lastSentTimestamp);
-            long received = Volatile.Read(ref _lastReceivedTimestamp);
+            // Read before the lock is taken, because the TimeProvider is code of the application.
             long now = _client._timeProvider.GetTimestamp();
             bool began = false;
 
@@ -615,7 +608,7 @@ public sealed partial class SignalClient
                     return;
                 }
 
-                if (!Beat(sent, received, now))
+                if (!Beat(now))
                 {
                     began = BeginEnd(NoTraffic);
                 }
@@ -627,22 +620,24 @@ public sealed partial class SignalClient
             }
         }
 
-        // Under the client's lock, with the timestamps of the last send and receive and the present one, read before it in
-        // that order: sends a PING when the client has sent nothing, or received nothing, for HeartbeatInterval, and at
-        // most one in that time, and arms the timer for the earlier of the next PING and the dead peer. False when nothing
-        // was received for DeadPeerTimeout: the host is dead.
-        private bool Beat(long sent, long received, long now)
+        // Under the client's lock, with the present timestamp read before it: sends a PING when the client has sent
+        // nothing, or received nothing, for HeartbeatInterval, and at most one in that time, and arms the timer for the
+        // earlier of the next PING and the dead peer. False when nothing was received for DeadPeerTimeout: the host is
+        // dead. The timestamps of the traffic are read here, so that a receive handled meanwhile counts; one taken after
+        // the present counts as taken at it.
+        private bool Beat(long now)
         {
-            TimeSpan sinceReceived = _client._timeProvider.GetElapsedTime(received, now);
+            TimeProvider timeProvider = _client._timeProvider;
+            TimeSpan sinceReceived = SignalChecks.Elapsed(timeProvider, Volatile.Read(ref _lastReceivedTimestamp), now);
 
             if (sinceReceived >= _client._deadPeerTimeout)
             {
                 return false;
             }
 
-            TimeSpan sinceSent = _client._timeProvider.GetElapsedTime(sent, now);
+            TimeSpan sinceSent = SignalChecks.Elapsed(timeProvider, Volatile.Read(ref _lastSentTimestamp), now);
             TimeSpan sincePing = _lastPingTimestamp is { } pinged
-                ? _client._timeProvider.GetElapsedTime(pinged, now)
+                ? SignalChecks.Elapsed(timeProvider, pinged, now)
                 : TimeSpan.MaxValue;
 
             // How long the connection has been quiet on the side that was quiet longer, unless a PING went out since.
