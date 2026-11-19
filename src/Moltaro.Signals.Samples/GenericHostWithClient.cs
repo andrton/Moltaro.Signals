@@ -29,6 +29,7 @@ internal static class GenericHostWithClient
         Console.WriteLine("The worker process registers a client of that host, then its worker.");
         builder.Services.AddSignalClient(options =>
         {
+            // The sample runs the host in this process; a real client names the host's address from its configuration.
             options.HostEndPoint = signalHost.LocalEndPoint;
             options.Token = "sample-token";
         });

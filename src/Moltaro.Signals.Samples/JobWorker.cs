@@ -18,6 +18,7 @@ internal sealed class JobWorker(ISignals signals, JobStore store, IHostApplicati
             while (store.TryClaim(out string? job))
             {
                 Console.WriteLine($"The worker ({result}) processes {job}.");
+                // Only so that the sample ends; a real worker keeps its loop running.
                 lifetime.StopApplication();
             }
         }
