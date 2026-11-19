@@ -1717,14 +1717,14 @@ following hold:
    and pushes both packages.
 
 **The release change.** `README.md` on `main` says what works today (`AGENTS.md`), and
-the README packed into a package cannot change after it is published. So the "Package"
-section is turned to the published state — the packages on nuget.org from 0.1.0, the
+the README packed into a package cannot change after it is published. So the first
+sentence of "Status" and the "Package" section are turned to the published state — the packages on nuget.org from 0.1.0, the
 command that installs them — by one small light-track change after S6 is merged, which
 changes nothing else and has its independent review. O1 does not cover it: the owner
 merges it and tags its merge commit right away, so the claim on `main` comes minutes
 before it is true, and the tagged commit carries it into the packages. If the Publish
 workflow fails, the owner acts at once: a run that failed outside the tagged commit is
-run again, and any other failure takes the next version, with the section changed for it,
+run again, and any other failure takes the next version, with both changed for it,
 as [branches and releases](branches.md#releases) describes the release.
 
 After the packages are on nuget.org, a light-track change removes this document from
