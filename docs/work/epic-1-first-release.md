@@ -1,7 +1,7 @@
 # Epic 1: First release
 
 **Status:** the plan and its contract were approved by the owner on 18 November 2026 (O4);
-S1 to S4 are done; S5 is next.
+S1 to S5 are done; S6 is next.
 
 ## Goal
 
@@ -622,8 +622,8 @@ The `ISignals` of a process other than the host's, over one persistent TCP conne
   subscription is open, and its wait returns `Joined`, once the host answered it.
   `State` is `Connected` before any `Joined` of that connection; the notification of
   `Connected` is not ordered against it. When the host refuses or no host answers, the
-  client stays `Disconnected` and tries again with backoff. Errors: `InvalidOperationException` when started before;
-  `ObjectDisposedException`.
+  client stays `Disconnected` and tries again with backoff. Errors:
+  `InvalidOperationException` when started before; `ObjectDisposedException`.
 - **Liveness.** While connected, the client sends `PING` when it has sent nothing, or
   received nothing, for `HeartbeatInterval`, and at most one `PING` in that time; it
   declares the connection dead when it has received nothing for `DeadPeerTimeout`. A
@@ -918,7 +918,7 @@ S1 contract ── S2 signal delivery, in-process ── S3 protocol, host over 
 | S2 | Signal delivery and the in-process host | Full | Done, 18 November 2026: internal contract approved by the owner after 4 review rounds; sprint review 3 rounds |
 | S3 | The protocol, its codec and the host over TCP | Full | Done, 18 November 2026: protocol and internal contract reviewed in 3 rounds and approved by the owner; sprint review 2 rounds |
 | S4 | Refactoring of the code base after S3 | Refactoring | Done, 18 November 2026: 1 review round |
-| S5 | The remote client: liveness and reconnection | Full | Not started |
+| S5 | The remote client: liveness and reconnection | Full | Done, 19 November 2026: 3 review rounds |
 | S6 | The hosting package, the samples and the first release | Full | Not started |
 
 ### S1 · The public contract, the projects and the test lane
