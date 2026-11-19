@@ -18,7 +18,7 @@ public sealed class ConnectionLimitTests
     // then waits for its next attempt. The host has room again once it has closed the socket of the first client, which
     // the second client cannot see, so the test advances its clock from one attempt to the next until the host accepts
     // one. Every notification of Connected records whether the first client was disposed by then.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_second_client_never_reaches_Connected_while_the_first_holds_the_only_connection_of_the_host()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

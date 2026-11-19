@@ -8,7 +8,7 @@ namespace Moltaro.Signals.Tests.Remote;
 public sealed class CompletionTests
 {
     // The member's WaitAsync is called before the first set, so its WAIT reaches the host first and the set wakes it.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Another_set_of_a_client_completes_while_the_code_after_its_awaited_wait_and_set_is_blocked()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

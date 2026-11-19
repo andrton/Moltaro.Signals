@@ -22,9 +22,72 @@ namespace Moltaro.Signals;
 /// made. Concurrent sets share the one connection; none waits for another.
 /// </para>
 /// </remarks>
-public sealed class SignalClient : ISignals, IAsyncDisposable
+public sealed partial class SignalClient : ISignals, IAsyncDisposable
 {
-    private volatile bool _disposed;
+    // The fixed sentences of the reasons of Disconnected, beside the code and text of a refusal by the host and the
+    // reason of a line of the host that breaks the grammar.
+    private const string ClosedByHost = "The host closed the connection.";
+
+    private const string NoTraffic = "Nothing came from the host for DeadPeerTimeout.";
+
+    private const string ConnectionFailed = "The connection to the host failed.";
+
+    private const string NotOutstanding = "The host answered a request that is not outstanding.";
+
+    // The one lock of the client. It guards _connection, _subscriptions, _lastId, _notifications, _notifying, _running,
+    // the change of _state and of _disposal, the wait fields of every subscription, and of every connection its output,
+    // its sets, its acceptance and its end. Under it the client runs no code of the application except, for deadlines and
+    // heartbeats, TimeProvider.CreateTimer with no due time and ITimer.Change with a positive one, so a TimeProvider does
+    // not call back inside them. Under it the client also appends a line to the output of its connection and starts the
+    // flush of that output, and starts the delivery of notifications, each on the thread pool and never inline. The clock
+    // is read before it is taken; waits and sets are completed, cancellations registered and sockets closed after it is
+    // released.
+    private readonly Lock _lock = new();
+
+    private readonly EndPoint _hostEndPoint;
+
+    private readonly string _token;
+
+    private readonly TimeSpan _heartbeatInterval;
+
+    private readonly TimeSpan _deadPeerTimeout;
+
+    private readonly TimeSpan _reconnectDelay;
+
+    private readonly TimeSpan _maxReconnectDelay;
+
+    private readonly TimeProvider _timeProvider;
+
+    // Cancelled by DisposeAsync: it ends the wait for the next attempt, and the attempt that runs.
+    private readonly CancellationTokenSource _stopping = new();
+
+    // The open subscriptions by their <sid>, which each keeps across connections: those a connection opens again when
+    // the host accepts it.
+    private readonly Dictionary<long, RemoteSubscription> _subscriptions = [];
+
+    // The notifications not delivered yet, in the order of the changes. While a handler blocks, this grows by one for
+    // each later change; nothing else makes it grow, since every change is delivered.
+    private readonly Queue<SignalConnectionChangedEventArgs> _notifications = new();
+
+    // The one counter of the client, from which every <sid> and <rid> is taken, so that no id is used twice on any
+    // connection.
+    private long _lastId;
+
+    // The attempt or the connection that runs; null between attempts and once its end has begun.
+    private Connection? _connection;
+
+    // Connected from the section that accepts a connection to the section that begins its end. Read without the lock.
+    private volatile SignalConnectionStateEnum _state;
+
+    // Whether a work item delivers the notifications now; at most one does.
+    private bool _notifying;
+
+    // The loop that runs the attempts, from Start until the client is disposed.
+    private Task? _running;
+
+    // Null until the client is disposed. The first DisposeAsync creates it under _lock and completes it once the loop of
+    // the attempts has ended; a later call returns its task.
+    private volatile TaskCompletionSource? _disposal;
 
     /// <summary>
     /// Creates a client of a host elsewhere. It does not connect: <see cref="Start"/> does, so that handlers of
@@ -83,6 +146,18 @@ public sealed class SignalClient : ISignals, IAsyncDisposable
         {
             throw new ArgumentException("The time provider is required.", nameof(SignalClientOptions.TimeProvider));
         }
+
+        // An IPEndPoint can be changed after it was given, so the client keeps a copy; a name is resolved again for every
+        // attempt by the connect.
+        _hostEndPoint = options.HostEndPoint is IPEndPoint address
+            ? new IPEndPoint(address.Address, address.Port)
+            : options.HostEndPoint;
+        _token = options.Token!;
+        _heartbeatInterval = options.HeartbeatInterval;
+        _deadPeerTimeout = options.DeadPeerTimeout;
+        _reconnectDelay = options.ReconnectDelay;
+        _maxReconnectDelay = options.MaxReconnectDelay;
+        _timeProvider = options.TimeProvider;
     }
 
     /// <summary>
@@ -94,7 +169,7 @@ public sealed class SignalClient : ISignals, IAsyncDisposable
     /// A connection whose host died is reported connected only until the dead peer is detected, at most
     /// <see cref="SignalClientOptions.DeadPeerTimeout"/>.
     /// </remarks>
-    public SignalConnectionStateEnum State => SignalConnectionStateEnum.Disconnected;
+    public SignalConnectionStateEnum State => _state;
 
     /// <summary>
     /// Raised with <see cref="SignalConnectionStateEnum.Connected"/> when the host accepts the <c>HELLO</c> of the
@@ -109,11 +184,7 @@ public sealed class SignalClient : ISignals, IAsyncDisposable
     /// changes, never inside a call of the application and never under a lock of the library; a dispose does not
     /// wait for them.
     /// </remarks>
-    public event EventHandler<SignalConnectionChangedEventArgs>? StateChanged
-    {
-        add { }
-        remove { }
-    }
+    public event EventHandler<SignalConnectionChangedEventArgs>? StateChanged;
 
     /// <summary>
     /// Begins connecting in the background and returns at once.
@@ -128,6 +199,13 @@ public sealed class SignalClient : ISignals, IAsyncDisposable
     /// <see cref="SignalWaitResultEnum.Joined"/>, once the host answered it.
     /// </para>
     /// <para>
+    /// So <see cref="State"/> is <see cref="SignalConnectionStateEnum.Connected"/> before any
+    /// <see cref="SignalWaitResultEnum.Joined"/> of that connection: the client sets it in the same step in which it
+    /// writes the reopenings, and reads the host's answers to them only after that step. The notification of
+    /// <c>Connected</c> is not ordered against a <c>Joined</c>: each runs on the thread pool, and <see cref="State"/>
+    /// may have moved on by then.
+    /// </para>
+    /// <para>
     /// When the host refuses or no host answers, the client stays <see cref="SignalConnectionStateEnum.Disconnected"/>
     /// and tries again with backoff: after <see cref="SignalClientOptions.ReconnectDelay"/>, doubled after each failed
     /// attempt up to <see cref="SignalClientOptions.MaxReconnectDelay"/>.
@@ -137,7 +215,21 @@ public sealed class SignalClient : ISignals, IAsyncDisposable
     /// <exception cref="ObjectDisposedException">The client was disposed.</exception>
     public void Start()
     {
-        throw new NotSupportedException();
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+
+            if (_running is not null)
+            {
+                throw new InvalidOperationException("The client was started before.");
+            }
+
+            // The loop outlives the call, so it does not capture the execution context of the caller; nor does anything
+            // it starts. It runs on the thread pool, so Start returns at once.
+            using AsyncFlowControl? flow = ExecutionContext.IsFlowSuppressed() ? null : ExecutionContext.SuppressFlow();
+
+            _running = Task.Run(RunAttemptsAsync);
+        }
     }
 
     /// <summary>
@@ -183,9 +275,32 @@ public sealed class SignalClient : ISignals, IAsyncDisposable
     public ValueTask<SignalSetResult> SetAsync(string key, CancellationToken cancellationToken = default)
     {
         SignalChecks.CheckName(key, nameof(key));
-        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        throw new NotSupportedException();
+        TaskCompletionSource<SignalSetResult> answer;
+
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return ValueTask.FromCanceled<SignalSetResult>(cancellationToken);
+            }
+
+            if (_state != SignalConnectionStateEnum.Connected)
+            {
+                return new ValueTask<SignalSetResult>(new SignalSetResult(SignalSetStatusEnum.Unavailable, 0));
+            }
+
+            answer = _connection!.WriteSet(key);
+        }
+
+        if (!cancellationToken.CanBeCanceled)
+        {
+            return new ValueTask<SignalSetResult>(answer.Task);
+        }
+
+        return new ValueTask<SignalSetResult>(WaitWithCancellationAsync(answer, cancellationToken));
     }
 
     /// <summary>
@@ -213,9 +328,24 @@ public sealed class SignalClient : ISignals, IAsyncDisposable
     {
         SignalChecks.CheckName(key, nameof(key));
         SignalChecks.CheckName(group, nameof(group));
-        ObjectDisposedException.ThrowIf(_disposed, this);
 
-        throw new NotSupportedException();
+        RemoteSubscription subscription;
+
+        lock (_lock)
+        {
+            ObjectDisposedException.ThrowIf(_disposal is not null, this);
+
+            subscription = new RemoteSubscription(this, ++_lastId, key, group);
+            _subscriptions.Add(subscription.Sid, subscription);
+
+            // While no connection is accepted, the next one opens it when the host accepts it.
+            if (_state == SignalConnectionStateEnum.Connected)
+            {
+                subscription.Open(_connection!);
+            }
+        }
+
+        return subscription;
     }
 
     /// <summary>
@@ -233,8 +363,192 @@ public sealed class SignalClient : ISignals, IAsyncDisposable
     /// </remarks>
     public ValueTask DisposeAsync()
     {
-        _disposed = true;
+        TaskCompletionSource disposal;
+        RemoteSubscription[] subscriptions;
+        TaskCompletionSource<SignalWaitResultEnum>?[] waiters;
+        Connection? connection;
+        bool endBegun;
+        Task running;
 
-        return ValueTask.CompletedTask;
+        lock (_lock)
+        {
+            // A later call waits for the first, which may still wait for the loop of the attempts.
+            if (_disposal is not null)
+            {
+                return new ValueTask(_disposal.Task);
+            }
+
+            disposal = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _disposal = disposal;
+            _state = SignalConnectionStateEnum.Disconnected;
+
+            // After DisposeAsync has been called, no notification starts.
+            _notifications.Clear();
+
+            // The subscriptions end with the client, before its connection ends, so that the end does not wait for a
+            // next connection for them.
+            subscriptions = [.. _subscriptions.Values];
+            waiters = new TaskCompletionSource<SignalWaitResultEnum>?[subscriptions.Length];
+            _subscriptions.Clear();
+
+            for (int index = 0; index < subscriptions.Length; index++)
+            {
+                waiters[index] = subscriptions[index].EndWithClient();
+            }
+
+            connection = _connection;
+            endBegun = connection is not null && connection.BeginEnd(reason: null);
+            running = _running ?? Task.CompletedTask;
+        }
+
+        // Ends the wait for the next attempt, or the attempt that runs.
+        _stopping.Cancel();
+
+        if (endBegun)
+        {
+            connection!.FinishEnd();
+        }
+
+        for (int index = 0; index < subscriptions.Length; index++)
+        {
+            subscriptions[index].FinishWithClient(waiters[index]);
+        }
+
+        // A client that was never started has nothing to wait for, so its dispose completes in the call.
+        if (running.IsCompleted)
+        {
+            disposal.SetResult();
+
+            return new ValueTask(disposal.Task);
+        }
+
+        return new ValueTask(FinishDisposeAsync(running, disposal));
+    }
+
+    // Registers the cancellation after the lock, because a token that is already cancelled runs the callback inside the
+    // registration. The set releases it itself once its task has completed; its answer, if it comes, is then ignored.
+    private static async Task<SignalSetResult> WaitWithCancellationAsync(
+        TaskCompletionSource<SignalSetResult> answer,
+        CancellationToken cancellationToken)
+    {
+        CancellationTokenRegistration registration = cancellationToken.UnsafeRegister(
+            static (state, token) => ((TaskCompletionSource<SignalSetResult>)state!).TrySetCanceled(token),
+            answer);
+
+        try
+        {
+            return await answer.Task.ConfigureAwait(false);
+        }
+        finally
+        {
+            registration.Unregister();
+        }
+    }
+
+    // Runs the attempts, one at a time, until the client is disposed. The first is at once. After a connection the host
+    // accepted, the next attempt comes after ReconnectDelay; after an attempt that failed, after the last delay doubled,
+    // up to MaxReconnectDelay. Every wait goes through the TimeProvider.
+    private async Task RunAttemptsAsync()
+    {
+        TimeSpan delay = _reconnectDelay;
+
+        while (true)
+        {
+            var connection = new Connection(this);
+            bool stopped;
+
+            lock (_lock)
+            {
+                stopped = _disposal is not null;
+
+                if (stopped)
+                {
+                    connection.BeginEnd(reason: null);
+                }
+                else
+                {
+                    _connection = connection;
+                }
+            }
+
+            if (stopped)
+            {
+                // Closes the socket and the timer that the connection was made with.
+                connection.FinishEnd();
+
+                return;
+            }
+
+            if (await connection.RunAsync().ConfigureAwait(false))
+            {
+                delay = _reconnectDelay;
+            }
+
+            try
+            {
+                await Task.Delay(delay, _timeProvider, _stopping.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            delay = TimeSpan.FromTicks(Math.Min(delay.Ticks * 2, _maxReconnectDelay.Ticks));
+        }
+    }
+
+    // Under the lock, in the section of the change it reports: queues a notification, and starts its delivery on the
+    // thread pool when none runs. A dispose raises none, and none starts after it.
+    private void Notify(SignalConnectionStateEnum state, string? reason)
+    {
+        if (_disposal is not null)
+        {
+            return;
+        }
+
+        _notifications.Enqueue(new SignalConnectionChangedEventArgs(state, reason));
+
+        if (!_notifying)
+        {
+            _notifying = true;
+
+            // A work item, not a task, so that an exception of a handler is an unhandled exception of the process.
+            ThreadPool.UnsafeQueueUserWorkItem(static client => client.DeliverNotifications(), this, preferLocal: false);
+        }
+    }
+
+    // Delivers the notifications one at a time, in the order of the changes, outside the lock, and ends when none is
+    // left or the client is disposed. A handler that blocks holds up only the later notifications.
+    private void DeliverNotifications()
+    {
+        while (true)
+        {
+            SignalConnectionChangedEventArgs? change;
+
+            lock (_lock)
+            {
+                if (_disposal is not null || !_notifications.TryDequeue(out change))
+                {
+                    _notifying = false;
+
+                    return;
+                }
+            }
+
+            StateChanged?.Invoke(this, change);
+        }
+    }
+
+    // After the loop of the attempts has ended. A failure of the loop still completes the dispose.
+    private static async Task FinishDisposeAsync(Task running, TaskCompletionSource disposal)
+    {
+        try
+        {
+            await running.ConfigureAwait(false);
+        }
+        finally
+        {
+            disposal.SetResult();
+        }
     }
 }

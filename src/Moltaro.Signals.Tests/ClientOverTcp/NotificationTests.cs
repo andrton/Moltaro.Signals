@@ -23,7 +23,7 @@ public sealed class NotificationTests
     // The host refuses four attempts, one with each code that refuses a connection, accepts the fifth and then ends it.
     // The handler of the first notification blocks until the client has gone through all of these changes, which it
     // does meanwhile: its member returns Joined from the fifth. The later notifications wait behind the first.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Notifications_come_one_at_a_time_in_the_order_of_the_changes_with_the_code_of_each_refused_attempt_at_the_start_of_Reason()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -99,7 +99,7 @@ public sealed class NotificationTests
 
     // The handler of Connected blocks until the end of the test. Meanwhile the client reads the host's answers and
     // signals and sends its heartbeat.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task While_a_handler_blocks_sets_waits_and_heartbeats_go_on()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -149,7 +149,7 @@ public sealed class NotificationTests
 
     // The handler of Connected disposes the client and waits until the dispose has completed before it returns: a
     // dispose that waited for the handler that is running would never complete.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_handler_that_disposes_the_client_completes()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

@@ -18,7 +18,7 @@ public sealed class WaitTests
 
     private static readonly TimeSpan Deadline = TimeSpan.FromSeconds(1);
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_member_subscribed_while_connected_returns_Joined_only_once_the_host_has_answered_its_SUB()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -41,7 +41,7 @@ public sealed class WaitTests
 
     // The member waits when the host ends the connection. Its wait returns Joined from the next connection, once the
     // host has answered the SUB that reopens it there; the client reports Connected before.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_member_reopened_after_a_reconnect_returns_Joined_only_once_the_host_has_answered_its_SUB()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -74,7 +74,7 @@ public sealed class WaitTests
 
     // First without a SIG: the host answers the UNWAIT alone. Then the host had handed the member a signal before it
     // read the UNWAIT, so it writes the SIG before its answer.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_wait_ended_by_its_deadline_returns_DeadlineReached_or_Signaled_when_a_SIG_crosses_its_UNWAIT()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -99,7 +99,7 @@ public sealed class WaitTests
     }
 
     // As with the deadline: first without a SIG, then with one that crossed the UNWAIT.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_wait_ended_by_its_token_ends_cancelled_or_returns_Signaled_when_a_SIG_crosses_its_UNWAIT()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

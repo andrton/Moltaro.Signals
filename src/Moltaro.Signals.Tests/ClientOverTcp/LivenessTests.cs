@@ -23,7 +23,7 @@ public sealed class LivenessTests
     // A host that answers nothing after OK 0. Two sets wait for answers that never come: the first is the next line the
     // host reads, so no PING was sent within HeartbeatInterval of the first one; the second shows that the client is
     // connected just before DeadPeerTimeout. Both end Unavailable when the connection is declared dead.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_silent_host_gets_one_PING_in_each_HeartbeatInterval_and_is_declared_dead_after_DeadPeerTimeout()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -66,7 +66,7 @@ public sealed class LivenessTests
 
     // The host keeps the client receiving: it answers the client's last line, a set sent at t0, half an interval later.
     // A client that counted only what it received would send its PING half an interval later than this.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_PING_is_sent_after_HeartbeatInterval_with_nothing_sent_while_the_host_keeps_sending()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -95,7 +95,7 @@ public sealed class LivenessTests
     // client that counted only what it sent would send no PING at t0 + HeartbeatInterval, and would declare the
     // connection dead at t0 + DeadPeerTimeout. The host answers the PING; the answer to a set, written right after the
     // PONG, shows that the client has read the PONG before the clock moves on.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_client_that_keeps_sending_WAITs_sends_PING_after_HeartbeatInterval_with_nothing_received_and_stays_connected_while_its_PINGs_are_answered()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

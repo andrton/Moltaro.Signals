@@ -26,7 +26,7 @@ public sealed class ReconnectionTests
     // The first attempt is at once. The host ends every attempt before it answers the HELLO, until the fifth, which it
     // accepts and then ends. The next notification after each failed attempt is Connected, so a failed attempt raised
     // nothing.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task The_delay_between_attempts_doubles_from_ReconnectDelay_up_to_MaxReconnectDelay_and_falls_back_once_the_host_accepts()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -55,7 +55,7 @@ public sealed class ReconnectionTests
 
     // The first attempt gets no answer and ends at DeadPeerTimeout; the host ends the second before it answers; it
     // answers the third just before DeadPeerTimeout, which the client accepts. Connected is the first notification.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task An_attempt_that_gets_no_answer_to_its_HELLO_within_DeadPeerTimeout_or_whose_connection_ends_before_the_answer_raises_nothing()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -88,7 +88,7 @@ public sealed class ReconnectionTests
 
     // On every connection, the first lines are the openings of both members, then the set made after Connected: on
     // the first connection, and on the next one, after the host ended the first.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Every_open_subscription_is_opened_on_a_new_connection_before_a_request_made_after_Connected()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

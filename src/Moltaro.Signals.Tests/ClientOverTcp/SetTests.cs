@@ -9,7 +9,7 @@ namespace Moltaro.Signals.Tests.ClientOverTcp;
 public sealed class SetTests
 {
     // The client is not connected while its first attempt waits for the answer to its HELLO.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_set_made_while_the_client_is_not_connected_is_Unavailable_at_once_and_never_reaches_the_host()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -36,7 +36,7 @@ public sealed class SetTests
         Assert.Equal(0, result.Groups);
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task A_set_whose_answer_is_lost_with_the_connection_returns_Unavailable()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -57,7 +57,7 @@ public sealed class SetTests
 
     // The host reads both lines, in the order of the calls, before it answers either; each set returns the count of
     // its own answer.
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Concurrent_sets_share_the_connection_and_none_waits_for_another()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

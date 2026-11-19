@@ -15,7 +15,7 @@ public sealed class DisposeTests
 
     private static readonly TimeSpan DeadPeerTimeout = TimeSpan.FromSeconds(30);
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Disposing_the_client_ends_a_set_that_waits_for_the_answer_of_the_host_and_closes_the_connection()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -33,7 +33,7 @@ public sealed class DisposeTests
         Assert.Null(await connection.ReadLineAsync(cancellationToken));
     }
 
-    [Fact(Skip = SkipReason.NotImplemented)]
+    [Fact]
     public async Task Disposing_the_client_while_it_waits_for_its_next_attempt_stops_reconnecting()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
