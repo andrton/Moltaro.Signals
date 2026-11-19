@@ -122,6 +122,10 @@ not committed. S6 moves the final figures into `README.md`.
 | S3 | `SET` lines applied per second from one connection, pipelined over loopback | 0.73 million | Reported | The same | 18 November 2026 |
 | S3 | Allocated per `SET` over loopback | 0.7 bytes | Reported | The same | 18 November 2026 |
 | S3 | In-process set to wake, again on the build of S3 | p50 1.4 µs, p99 2.4 µs | p50 under 50 µs: met | The same | 18 November 2026 |
+| S5 | Loopback set to wake, from one client to a member on another, 50,000 wakes | p50 41 µs, p99 100 µs, maximum 1.1 ms | p99 under 1 ms: met | The same | 19 November 2026 |
+| S5 | Allocated per remote wake, with its set and the next wait, the host's included | 768 bytes | Reported | The same | 19 November 2026 |
+| S5 | Sets per second from one client with 1 / 8 / 64 concurrent callers | 21,000 / 63,000 / 521,000 | Reported | The same | 19 November 2026 |
+| S5 | Allocated per remote set with 1 / 8 / 64 callers | 384 / 164 / 106 bytes | Reported | The same | 19 November 2026 |
 
 Rates and latencies on one laptop with mixed core types vary between runs, by a factor of
 five in the review of S2; every judged target was met in every run. The allocation and

@@ -6,12 +6,13 @@ Made for the case where a message broker is used only as a wake-up doorbell.
 
 ## Status
 
-Host stage. The public contract of both packages exists in code, with its documentation.
-What works today is the host: `SignalHost` as `ISignals` inside its own process, with
-every rule of signal delivery, deadlines, cancellation and the metrics below, and
-listening over TCP after `Start`, speaking version 1 of the
-[protocol](docs/protocol.md) to any client that sends its lines. `SignalClient` and the
-hosting package are not implemented yet; their members refuse with
+Client stage. The public contract of both packages exists in code, with its
+documentation. What works today is the library itself: `SignalHost` as `ISignals` inside
+its own process, with every rule of signal delivery, deadlines, cancellation and the
+metrics below, listening over TCP after `Start` and speaking version 1 of the
+[protocol](docs/protocol.md); and `SignalClient` as `ISignals` in other processes, with
+heartbeats, dead-peer detection, reconnection with backoff and `Joined` after every
+reconnect. The hosting package is not implemented yet; its methods refuse with
 `NotSupportedException`. The first epic, the
 library up to its first release, is under way in [current work](docs/work/README.md).
 
@@ -41,7 +42,8 @@ or taken, not as a message:
 - a set that arrives while a member is working is waiting for it when it comes back;
 - a member that dies mid-work hands the signal on;
 - after a reconnect every member does one full pass, so the host can restart freely;
-- a client knows within seconds whether the host is alive, and a set never blocks.
+- a client knows within seconds whether the host is alive, and a set never waits for a
+  connection.
 
 It is not a message broker, a queue, a lock or a pub/sub bus with payloads. Signals carry
 no data, have no history and are not persisted. See the
@@ -55,6 +57,8 @@ non-goals.
 - [How a set wakes one member of each group on a key](docs/explanations/signal-delivery.md),
   also as an [animated page](docs/explanations/signal-delivery.html) to open from a
   checkout.
+- [Why nothing is lost when a connection drops or the host restarts](docs/explanations/connection-loss.md),
+  also as an [animated page](docs/explanations/connection-loss.html).
 - [Documentation index](docs/README.md) and [current work](docs/work/README.md).
 - [How the project is built](AGENTS.md): architectural principles, code style and working
   rules, for people and coding agents.

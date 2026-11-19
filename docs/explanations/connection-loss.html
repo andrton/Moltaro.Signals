@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Why nothing is lost when a connection drops or the host restarts — Moltaro.Signals</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #1c2330; --muted: #5d6878; --line: #c9d1dc; --panel: #f4f6f9;
+    --link: #1f6feb; --sig: #d97706; --busy: #1f6feb; --busy-bg: #e6f0ff;
+    --ok: #1a7f37; --bad: #cf222e;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161c; --fg: #e3e8ef; --muted: #98a4b3; --line: #3a4350; --panel: #1b212a;
+      --link: #6cb0ff; --sig: #f0a55a; --busy: #6cb0ff; --busy-bg: #16263f;
+      --ok: #3fb950; --bad: #ff7b72;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 940px; margin: 0 auto; padding: 32px 20px 64px; }
+  h1 { font-size: 1.7rem; line-height: 1.25; margin: 0 0 8px; }
+  h2 { font-size: 1.2rem; margin: 40px 0 8px; }
+  p { margin: 8px 0; }
+  ul, ol { padding-left: 24px; margin: 8px 0; }
+  li { margin: 4px 0; }
+  a { color: var(--link); }
+  code { font: .9em ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .lead { color: var(--muted); }
+  .status { border-left: 3px solid var(--sig); background: var(--panel); padding: 10px 14px; margin: 18px 0; font-size: .93rem; }
+  blockquote { margin: 16px 0; padding: 10px 16px; border-left: 3px solid var(--busy); background: var(--panel); font-size: 1.05rem; }
+  figure { margin: 20px 0 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  svg { display: block; width: 100%; height: auto; background: var(--panel); }
+  .controls { display: flex; gap: 8px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--fg); cursor: pointer; }
+  button:hover { border-color: var(--fg); }
+  button:disabled { opacity: .45; cursor: default; }
+  .count { color: var(--muted); font-size: .9rem; margin-left: auto; }
+  .caption { padding: 14px; border-top: 1px solid var(--line); min-height: 136px; }
+  details { margin: 12px 0 0; }
+  summary { cursor: pointer; color: var(--muted); }
+
+  /* drawing */
+  text { fill: var(--fg); font: 13px system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .small { font-size: 11.5px; fill: var(--muted); }
+  .head { font-size: 12px; fill: var(--muted); letter-spacing: .04em; text-transform: uppercase; }
+  .mono { font: 13px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .name { font-weight: 700; font-size: 15px; }
+  .box { fill: var(--bg); stroke: var(--line); stroke-width: 1.2; transition: stroke .5s ease; }
+  .box.active { stroke: var(--sig); stroke-width: 2; }
+  .box.gone { fill: none; stroke-dasharray: 6 4; }
+  .legend-busy { fill: var(--busy-bg); stroke: var(--busy); stroke-width: 1.4; }
+  .legend-free { fill: var(--bg); stroke: var(--busy); stroke-width: 1.4; stroke-dasharray: 4 3; }
+  .member rect { stroke-width: 1.4; transition: fill .5s ease, stroke .5s ease; }
+  .member.wait rect { fill: var(--bg); stroke: var(--line); }
+  .member.busy rect { fill: var(--busy-bg); stroke: var(--busy); }
+  .member.free rect { fill: var(--bg); stroke: var(--busy); stroke-dasharray: 6 4; }
+  .member.gone rect { fill: none; stroke: var(--line); stroke-dasharray: 6 4; }
+  .member.gone text { opacity: .55; }
+  .state.ok { fill: var(--ok); }
+  .state.bad { fill: var(--bad); }
+  .conn { fill: none; stroke-width: 2; transition: stroke .5s ease; }
+  .conn.up { stroke: var(--muted); }
+  .conn.silent { stroke: var(--bad); stroke-dasharray: 8 6; }
+  .conn.try { stroke: var(--line); stroke-dasharray: 2 6; }
+  .wire { font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; }
+  .note { font-size: 11.5px; fill: var(--muted); }
+  .sig circle, circle.sig { fill: var(--sig); }
+  .sig { transition: transform .9s ease, opacity .5s ease; }
+  @media (prefers-reduced-motion: reduce) { .sig, .member rect, .box, .conn { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Why nothing is lost when a connection drops or the host restarts</h1>
+  <p class="lead">Moltaro.Signals · an explanation for a developer who uses the library, not a
+    specification. The rules are <a href="../concept.md#3-semantics">concept §3, “Semantics”</a>,
+    <a href="../concept.md#4-liveness">concept §4, “Liveness”</a> and the wire format in
+    <a href="../protocol.md">docs/protocol.md</a>. The same text without the animation is in
+    <a href="connection-loss.md">connection-loss.md</a>. How a set wakes a member while every
+    connection holds is the first explanation,
+    <a href="signal-delivery.html">How a set wakes one member of each group on a key</a>.</p>
+  <p class="status"><b>Status, 19 November 2026.</b> Built: sprint S5 of the first epic built the
+    remote client, <code>SignalClient</code> used as <code>ISignals</code>, with everything this page
+    shows; the host has listened over TCP since sprint S3. The hosting package,
+    <code>Moltaro.Signals.Hosting</code>, is not built yet.</p>
+
+  <h2>The idea</h2>
+  <blockquote>The host keeps its signals only in memory, and any connection can fail. Nothing is lost
+    anyway: a busy member that is lost hands its signal on, a client that is not connected says so at
+    once, and after every reconnect each member does one full pass.</blockquote>
+  <p>A signal carries no work. The work is stored before the set, so a pass finds it, whatever
+    happened to the signal.</p>
+
+  <h2>The parts</h2>
+  <ul>
+    <li><b>Host.</b> <code>SignalHost</code>, embedded in one process. It keeps the signals in its
+      memory and nothing else, and listens on a TCP port.</li>
+    <li><b>Client.</b> <code>SignalClient</code>, in another process. It keeps one TCP connection to
+      the host and is used as <code>ISignals</code>, by the same rules as code inside the host
+      process.</li>
+    <li><b>Connection state.</b> A client’s <code>State</code> is <code>Connected</code> or
+      <code>Disconnected</code>. <code>StateChanged</code> reports each change, and gives a reason for
+      <code>Disconnected</code>.</li>
+    <li><b>Heartbeat.</b> A <code>PING</code> line from the client, which the host answers with
+      <code>PONG</code>, so that a quiet connection still carries traffic.</li>
+    <li><b>Member, signal, busy.</b> As in the <a href="signal-delivery.html">first explanation</a>: a
+      member is one subscription; a set hands a signal to one waiting member of each group on the key;
+      the member is then busy, doing one pass, until its next <code>WaitAsync</code>.</li>
+  </ul>
+  <p><code>WaitAsync</code> returns <code>Joined</code> for a member’s first pass after subscribing and
+    after every reconnect, <code>Signaled</code> for a signal, and <code>DeadlineReached</code> at the
+    member’s own deadline. <code>SetAsync</code> returns <code>Applied</code> with <code>Groups</code>,
+    or <code>Unavailable</code> when the host did not confirm the set.</p>
+
+  <h2>Step by step</h2>
+  <p>The steps follow one host and three processes with a client each. The API stores orders and sets
+    the key <code>orders</code>. Worker 1 and worker 2 each run one member of the group
+    <code>billing</code> on <code>orders</code>: A in worker 1, B in worker 2. The times are the
+    defaults of the options: <code>HeartbeatInterval</code> 1 s, <code>DeadPeerTimeout</code> 3 s, and
+    <code>ReconnectDelay</code> 0.2 s growing to <code>MaxReconnectDelay</code> 2 s.</p>
+
+  <figure>
+    <svg viewBox="0 0 900 420" role="img" aria-label="The host process with key orders and group billing, its connections to three client processes, the API and the workers 1 and 2 with the members A and B, and the signals handed to them">
+      <!-- the host process -->
+      <text class="head" x="20" y="32">Host process</text>
+      <rect id="hostBox" class="box" x="20" y="40" width="280" height="230" rx="10"/>
+      <text id="hostStatus" class="name" x="36" y="68"></text>
+      <text id="hostSub" class="small" x="36" y="88"></text>
+      <rect class="box" x="36" y="102" width="248" height="152" rx="8"/>
+      <text class="head" x="50" y="124">key orders · group billing</text>
+      <g id="hA" class="member wait">
+        <rect x="50" y="136" width="220" height="40" rx="7"/>
+        <text class="name" x="64" y="161">A</text>
+        <text id="hsA" x="88" y="161"></text>
+      </g>
+      <g id="hB" class="member wait">
+        <rect x="50" y="188" width="220" height="40" rx="7"/>
+        <text class="name" x="64" y="213">B</text>
+        <text id="hsB" x="88" y="213"></text>
+      </g>
+      <text id="hEmpty" class="small" x="160" y="186" text-anchor="middle"></text>
+
+      <!-- legend -->
+      <circle class="sig" cx="34" cy="304" r="8"/>
+      <text class="small" x="50" y="308">a signal: “look now”</text>
+      <rect class="legend-busy" x="26" y="322" width="16" height="12" rx="3"/>
+      <text class="small" x="50" y="332">a busy member, doing one pass</text>
+      <rect class="legend-free" x="26" y="346" width="16" height="12" rx="3"/>
+      <text class="small" x="50" y="356">a member at work that holds no signal</text>
+
+      <!-- the connections -->
+      <line id="apiLine" class="conn up" x1="300" y1="95" x2="580" y2="95"/>
+      <text id="apiUp" x="440" y="86" text-anchor="middle"></text>
+      <text id="apiDown" x="440" y="114" text-anchor="middle"></text>
+      <line id="w1Line" class="conn up" x1="300" y1="220" x2="580" y2="220"/>
+      <text id="w1Up" x="440" y="211" text-anchor="middle"></text>
+      <text id="w1Down" x="440" y="239" text-anchor="middle"></text>
+      <line id="w2Line" class="conn up" x1="300" y1="345" x2="580" y2="345"/>
+      <text id="w2Up" x="440" y="336" text-anchor="middle"></text>
+      <text id="w2Down" x="440" y="364" text-anchor="middle"></text>
+
+      <!-- the client processes -->
+      <text class="head" x="580" y="32">Client processes</text>
+
+      <rect id="apiBox" class="box" x="580" y="40" width="300" height="110" rx="8"/>
+      <text class="name" x="596" y="66">API</text>
+      <circle id="apiDot" class="state ok" cx="756" cy="61" r="5"/>
+      <text id="apiState" class="state ok" x="766" y="66"></text>
+      <text class="small" x="596" y="86">stores orders, then sets orders</text>
+      <text id="apiCall" class="mono" x="596" y="112"></text>
+      <text id="apiResult" class="small" x="596" y="134"></text>
+
+      <rect class="box" x="580" y="165" width="300" height="110" rx="8"/>
+      <text class="name" x="596" y="191">Worker 1</text>
+      <circle id="w1Dot" class="state ok" cx="756" cy="186" r="5"/>
+      <text id="w1State" class="state ok" x="766" y="191"></text>
+      <g id="mA" class="member wait">
+        <rect x="596" y="205" width="268" height="56" rx="8"/>
+        <text class="name" x="612" y="229">A</text>
+        <text id="sA" x="636" y="229"></text>
+        <text id="rA" class="small" x="612" y="249"></text>
+      </g>
+
+      <rect class="box" x="580" y="290" width="300" height="110" rx="8"/>
+      <text class="name" x="596" y="316">Worker 2</text>
+      <circle id="w2Dot" class="state ok" cx="756" cy="311" r="5"/>
+      <text id="w2State" class="state ok" x="766" y="316"></text>
+      <g id="mB" class="member wait">
+        <rect x="596" y="330" width="268" height="56" rx="8"/>
+        <text class="name" x="612" y="354">B</text>
+        <text id="sB" x="636" y="354"></text>
+        <text id="rB" class="small" x="612" y="374"></text>
+      </g>
+
+      <!-- signals; each one is handed by the host to a member -->
+      <g opacity="0" id="d1" class="sig"><circle r="9"/></g>
+      <g opacity="0" id="d2" class="sig"><circle r="9"/></g>
+      <g opacity="0" id="d3" class="sig"><circle r="9"/></g>
+      <g opacity="0" id="d4" class="sig"><circle r="9"/></g>
+    </svg>
+    <div class="controls">
+      <button id="prev" type="button">← Back</button>
+      <button id="play" type="button">Pause</button>
+      <button id="next" type="button">Next →</button>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="caption" id="caption" aria-live="polite"></div>
+  </figure>
+
+  <details>
+    <summary>All steps as text</summary>
+    <ol id="steps">
+      <li><b>Everyone is connected.</b> The API, worker 1 and worker 2 each have a client connected to
+        the host, and each <code>State</code> is <code>Connected</code>. A and B returned
+        <code>Joined</code>, did one pass each, and wait again: each worker sent <code>WAIT 1</code>.
+        Nothing is pending.</li>
+      <li><b>Heartbeats on a quiet connection.</b> No order comes for a while. A client that has sent
+        nothing, or received nothing, for one second sends <code>PING</code>, and the host answers
+        <code>PONG</code>. So while both sides are alive, each receives something about once a second.
+        A side that receives nothing for three seconds declares its peer dead and closes the
+        connection. TCP keepalive is not relied on.</li>
+      <li><b>A set wakes A.</b> An order is stored, and the API calls <code>SetAsync("orders")</code>.
+        Its client sends <code>SET 1 orders</code>. The host hands the signal to A with
+        <code>SIG 1</code> to worker 1, and answers the API with <code>OK 1 1</code>. The set returns
+        <code>Applied</code> with <code>Groups</code> 1. A is busy now, doing its pass; B keeps
+        waiting.</li>
+      <li><b>Worker 1’s connection goes silent.</b> The network between worker 1 and the host fails. No
+        line gets through in either direction, and no close either. A works on. Neither side knows it
+        yet: worker 1 still reports <code>Connected</code>, and the host still counts A as busy.</li>
+      <li><b>Three seconds of silence: the peer is dead.</b> The host has received nothing from worker 1
+        for three seconds. It closes the connection and removes A. A was busy, and its pass may be
+        unfinished, so the host hands its signal on to <code>billing</code> on <code>orders</code>. B
+        waits, so B receives it with <code>SIG 1</code> and does the pass. Worker 1 has received nothing
+        for three seconds as well: its <code>State</code> becomes <code>Disconnected</code>,
+        <code>StateChanged</code> reports it with a reason, and the client starts to reconnect. A may
+        finish its pass too; two passes are harmless, because the work is claimed in storage.</li>
+      <li><b>The host restarts.</b> The host process stops, for example to install a new version. It
+        closes every connection, and its signals, which were only in its memory, are gone. The API and
+        worker 2 see the end of their connections at once and report <code>Disconnected</code>. B works
+        on, but no host knows of its signal any more. Every client tries to reconnect by itself.</li>
+      <li><b>A set while not connected answers <code>Unavailable</code> at once.</b> Another order is
+        stored, and the API calls <code>SetAsync("orders")</code>. Its client is not connected, so the
+        call returns <code>Unavailable</code> at once. Nothing is sent, and nothing is kept to send
+        later: a set never waits for a connection. The order is safe in storage; step 10 shows who
+        finds it.</li>
+      <li><b>The clients reconnect with backoff.</b> Each client tries again after a delay that doubles
+        after each failed attempt: 0.2 s, 0.4 s, 0.8 s, 1.6 s, and then every 2 s. Every attempt fails
+        while no host listens. Then the host process is back, with nothing in its memory, and the
+        network of worker 1 works again. The next attempt of each client sends <code>HELLO</code> with
+        the protocol version and the token, and the host accepts it with <code>OK 0</code>. The client’s
+        delay is back at 0.2 s for the next time.</li>
+      <li><b>The subscriptions are opened again, then <code>Connected</code>.</b> On <code>OK 0</code>,
+        each worker’s client first sends a <code>SUB</code> for each of its subscriptions: worker 1 for A,
+        worker 2 for B. Only then does each client report <code>Connected</code>, so any request made
+        after <code>Connected</code> reaches the host after these <code>SUB</code>s. A and B have
+        finished their passes and called <code>WaitAsync</code>. Each call waits for the host’s
+        <code>OK 1</code> to the <code>SUB</code> of its member. A member counts on the host only from
+        that answer on; a <code>Joined</code> before it could let a set during the pass find nobody, and
+        that set would be lost.</li>
+      <li><b><code>Joined</code>: one full pass for each member.</b> The host opens each member and
+        answers <code>OK 1</code>. Joining counts as a signal, so each <code>WaitAsync</code> returns
+        <code>Joined</code>, and A and B each do one full pass. Their passes find the order of step 7,
+        whose set was answered <code>Unavailable</code>. A set during these passes leaves a signal
+        pending, because the members are open and busy on the host. Nothing was lost.</li>
+    </ol>
+  </details>
+
+  <h2>What an application can rely on</h2>
+  <ul>
+    <li><b>A dead peer is found in bounded time.</b> A connection that goes silent, because a network
+      or a machine fails, is declared dead by each side after its <code>DeadPeerTimeout</code>, three
+      seconds by default. Until then <code>State</code> may still say <code>Connected</code>. A
+      connection that is closed, because a process stops or exits, ends as soon as its close
+      arrives.</li>
+    <li><b>A set never waits for a connection.</b> A client that is not connected answers
+      <code>Unavailable</code> at once, and never sends that set later. A connected client waits only
+      for the host’s answer, which carries <code>Groups</code>. If the connection is lost before that
+      answer, the set returns <code>Unavailable</code>: it may have taken effect, and repeating it is
+      harmless.</li>
+    <li><b>A busy member that is lost hands its signal on.</b> When a connection ends, the host removes
+      its members. A busy one hands its signal on to its group on its key: a waiting member receives
+      it, otherwise it becomes pending. If it was the last member of its group on that key, nothing is
+      kept, and a member that joins later does a pass anyway.</li>
+    <li><b>After every reconnect, one full pass.</b> A <code>WaitAsync</code> while the client is not
+      connected waits; its deadline and its token still end it, without asking a host. Once the host
+      has answered the reopening of its member, the first <code>WaitAsync</code> returns
+      <code>Joined</code>, as the first <code>WaitAsync</code> of a new subscription does. So the host
+      may restart at any time and forget everything: every member looks once.</li>
+    <li><b>A wait that ends does not drop a signal.</b> A remote wait that ends at its deadline or by
+      its token is ended with the host by <code>UNWAIT</code>. If the host handed a signal before that,
+      the wait returns <code>Signaled</code>.</li>
+    <li><b>No queue and no replay.</b> A set answered <code>Unavailable</code> is not kept or repeated
+      by the library. The work is in storage, and the pass after <code>Joined</code> finds it.</li>
+  </ul>
+</main>
+
+<script>
+(function () {
+  // Where a signal can be: with a member on the host, where the host hands it from, or
+  // with the member in its client process that it was handed to.
+  var AT = { HA: [248, 156], HB: [248, 208], W1A: [840, 233], W2B: [840, 358] };
+  var FROM = { d1: "HA", d2: "HA", d3: "HA", d4: "HB" };
+  var SIGNALS = ["d1", "d2", "d3", "d4"];
+
+  var C = "Connected", D = "Disconnected", SET = 'SetAsync("orders")';
+  var RUNNING = ["running", "signals in memory only"];
+  var STOPPED = ["stopped", "no process listens"];
+  var AGAIN = ["started again", "a new process, memory empty"];
+  var WAITS = ["wait", "waits", ""];
+  var BUSY = function (result) { return ["busy", "busy: one pass", "returned " + result]; };
+  var FREE = function (why) { return ["free", "works on, holds no signal", why]; };
+  var OPENING = ["wait", "waits for the host’s answer", ""];
+  var JOINED = ["busy", "busy: one full pass", "returned Joined"];
+  var UP = ["up", "", ""];
+  var TRY = ["try", "tries again: 0.2 s, 0.4 s, 0.8 s …", ""];
+
+  // One entry per item of the list "All steps as text", in the same order. h holds the
+  // members as the host sees them, or null while the host keeps none; m the members as
+  // their client processes see them; c each connection, with the line the client sends
+  // above it and the line the host sends below it; d the signals and where they are.
+  var steps = [
+    { host: RUNNING, h: { A: ["wait", "waits"], B: ["wait", "waits"] }, empty: "",
+      state: { api: C, w1: C, w2: C }, call: "", result: "",
+      m: { A: WAITS, B: WAITS },
+      c: { api: UP, w1: ["up", "← WAIT 1", ""], w2: ["up", "← WAIT 1", ""] }, d: {} },
+    { host: RUNNING, h: { A: ["wait", "waits"], B: ["wait", "waits"] }, empty: "",
+      state: { api: C, w1: C, w2: C }, call: "", result: "",
+      m: { A: WAITS, B: WAITS },
+      c: { api: ["up", "← PING", "PONG →"], w1: ["up", "← PING", "PONG →"], w2: ["up", "← PING", "PONG →"] },
+      d: {} },
+    { host: RUNNING, h: { A: ["busy", "busy"], B: ["wait", "waits"] }, empty: "",
+      state: { api: C, w1: C, w2: C }, call: SET, result: "Applied, Groups 1",
+      m: { A: BUSY("Signaled"), B: WAITS },
+      c: { api: ["up", "← SET 1 orders", "OK 1 1 →"], w1: ["up", "", "SIG 1 →"], w2: UP },
+      d: { d1: "W1A" } },
+    { host: RUNNING, h: { A: ["busy", "busy"], B: ["wait", "waits"] }, empty: "",
+      state: { api: C, w1: C, w2: C }, call: "", result: "",
+      m: { A: BUSY("Signaled"), B: WAITS },
+      c: { api: UP, w1: ["silent", "silent: nothing gets through", ""], w2: UP },
+      d: { d1: "W1A" } },
+    { host: RUNNING, h: { A: ["gone", "removed: dead peer"], B: ["busy", "busy"] }, empty: "",
+      state: { api: C, w1: D, w2: C }, call: "", result: "",
+      m: { A: FREE("removed on the host"), B: BUSY("Signaled") },
+      c: { api: UP, w1: ["try", "closed after 3 s of silence", ""], w2: ["up", "", "SIG 1 →"] },
+      d: { d2: "W2B" } },
+    { host: STOPPED, h: null, empty: "memory gone: no signals, no members",
+      state: { api: D, w1: D, w2: D }, call: "", result: "",
+      m: { A: FREE(""), B: FREE("no host knows its signal") },
+      c: { api: TRY, w1: TRY, w2: TRY }, d: {} },
+    { host: STOPPED, h: null, empty: "memory gone: no signals, no members",
+      state: { api: D, w1: D, w2: D }, call: SET, result: "Unavailable, at once",
+      m: { A: FREE(""), B: FREE("") },
+      c: { api: ["try", "nothing sent, nothing queued", ""], w1: TRY, w2: TRY }, d: {} },
+    { host: AGAIN, h: null, empty: "no members",
+      state: { api: D, w1: D, w2: D }, call: "", result: "",
+      m: { A: FREE(""), B: FREE("") },
+      c: { api: ["up", "← HELLO 1 <token>", "OK 0 →"], w1: ["up", "← HELLO 1 <token>", "OK 0 →"],
+        w2: ["up", "← HELLO 1 <token>", "OK 0 →"] },
+      d: {} },
+    { host: AGAIN, h: null, empty: "no members yet",
+      state: { api: C, w1: C, w2: C }, call: "", result: "",
+      m: { A: OPENING, B: OPENING },
+      c: { api: UP, w1: ["up", "← SUB 1 orders billing", ""], w2: ["up", "← SUB 1 orders billing", ""] },
+      d: {} },
+    { host: AGAIN, h: { A: ["busy", "busy: joined"], B: ["busy", "busy: joined"] }, empty: "",
+      state: { api: C, w1: C, w2: C }, call: "", result: "",
+      m: { A: JOINED, B: JOINED },
+      c: { api: UP, w1: ["up", "", "OK 1 →"], w2: ["up", "", "OK 1 →"] },
+      d: { d3: "W1A", d4: "W2B" } }
+  ];
+
+  var $ = function (id) { return document.getElementById(id); };
+  var captions = $("steps").children;
+  var at = 0, shown = -1, timer = null;
+  var STEP_MS = 10000;
+
+  function place(el, xy) { el.style.transform = "translate(" + xy[0] + "px," + xy[1] + "px)"; }
+
+  // A label with an arrow is a protocol line; any other label is a note.
+  function label(el, text) {
+    el.textContent = text;
+    el.setAttribute("class", /[←→]/.test(text) ? "wire" : "note");
+  }
+
+  function show() {
+    var s = steps[at];
+    var forward = at === shown + 1;
+
+    SIGNALS.forEach(function (id) {
+      var el = $(id);
+      var target = s.d[id];
+      var wasVisible = el.getAttribute("opacity") === "1";
+      if (!target) { el.setAttribute("opacity", 0); return; }
+      if (!wasVisible) {
+        // A signal that appears comes from the host when the figure moves one step
+        // forward; otherwise it appears in its place.
+        el.style.transition = "none";
+        place(el, AT[forward ? FROM[id] : target]);
+        el.getBoundingClientRect();
+        el.style.transition = "";
+      }
+      place(el, AT[target]);
+      el.setAttribute("opacity", 1);
+    });
+
+    $("hostBox").setAttribute("class", s.host === STOPPED ? "box gone" : "box");
+    $("hostStatus").textContent = s.host[0];
+    $("hostSub").textContent = s.host[1];
+    ["A", "B"].forEach(function (name) {
+      var row = $("h" + name);
+      if (!s.h) { row.setAttribute("visibility", "hidden"); return; }
+      row.setAttribute("visibility", "visible");
+      row.setAttribute("class", "member " + s.h[name][0]);
+      $("hs" + name).textContent = s.h[name][1];
+    });
+    $("hEmpty").textContent = s.empty;
+
+    ["A", "B"].forEach(function (name) {
+      var m = s.m[name];
+      $("m" + name).setAttribute("class", "member " + m[0]);
+      $("s" + name).textContent = m[1];
+      $("r" + name).textContent = m[2];
+    });
+
+    ["api", "w1", "w2"].forEach(function (client) {
+      var mark = "state " + (s.state[client] === C ? "ok" : "bad");
+      $(client + "State").textContent = s.state[client];
+      $(client + "State").setAttribute("class", mark);
+      $(client + "Dot").setAttribute("class", mark);
+      var c = s.c[client];
+      $(client + "Line").setAttribute("class", "conn " + c[0]);
+      label($(client + "Up"), c[1]);
+      label($(client + "Down"), c[2]);
+    });
+
+    $("apiBox").setAttribute("class", s.call ? "box active" : "box");
+    $("apiCall").textContent = s.call;
+    $("apiResult").textContent = s.result;
+
+    $("caption").innerHTML = captions[at].innerHTML;
+    $("count").textContent = "Step " + (at + 1) + " of " + steps.length;
+    $("prev").disabled = at === 0;
+    $("next").disabled = at === steps.length - 1;
+    shown = at;
+  }
+
+  function stop() { clearTimeout(timer); timer = null; $("play").textContent = "Play"; }
+
+  function play() {
+    $("play").textContent = "Pause";
+    timer = setTimeout(function tick() {
+      if (at === steps.length - 1) { stop(); return; }
+      at++; show();
+      timer = setTimeout(tick, STEP_MS);
+    }, STEP_MS);
+  }
+
+  $("prev").onclick = function () { stop(); if (at > 0) { at--; show(); } };
+  $("next").onclick = function () { stop(); if (at < steps.length - 1) { at++; show(); } };
+  $("play").onclick = function () {
+    if (timer) { stop(); return; }
+    if (at === steps.length - 1) { at = 0; show(); }
+    play();
+  };
+
+  show();
+  play();
+})();
+</script>
+</body>
+</html>
