@@ -1,6 +1,5 @@
 using System.Buffers.Text;
 using System.Diagnostics;
-using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
@@ -13,8 +12,6 @@ namespace Moltaro.Signals.Measurements;
 // sets do.
 internal static class LoopbackSets
 {
-    private const string Token = "measurements";
-
     private const int WarmUpSets = 100_000;
 
     private const int MeasuredSets = 1_000_000;
@@ -24,15 +21,8 @@ internal static class LoopbackSets
 
     public static async Task RunAsync()
     {
-        var options = new SignalHostOptions
-        {
-            ListenEndPoint = new IPEndPoint(IPAddress.Loopback, 0),
-            Token = Token,
-        };
-
-        await using var host = new SignalHost(options);
+        await using SignalHost host = Loopback.StartHost();
         using ISignalSubscription busy = host.Subscribe("jobs", "workers");
-        host.Start();
 
         using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
         await socket.ConnectAsync(host.LocalEndPoint!);
@@ -54,7 +44,7 @@ internal static class LoopbackSets
 
     private static async Task HelloAsync(Socket socket)
     {
-        await socket.SendAsync(Encoding.ASCII.GetBytes($"HELLO 1 {Token}\r\n").AsMemory(), SocketFlags.None);
+        await socket.SendAsync(Encoding.ASCII.GetBytes($"HELLO 1 {Loopback.Token}\r\n").AsMemory(), SocketFlags.None);
 
         byte[] answer = new byte[64];
         int length = 0;

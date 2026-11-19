@@ -5,8 +5,9 @@ using Moltaro.Signals.TestSupport;
 
 namespace Moltaro.Signals.Tests.HostOverTcp;
 
-// A client that speaks the protocol by hand over a loopback socket: it sends the text a test writes, each \r\n
-// included, and reads the lines the host writes, one at a time.
+// One end of a connection that speaks the protocol by hand over a loopback socket: it sends the text a test writes,
+// each \r\n included, and reads the lines the other end writes, one at a time. A test is the client of a SignalHost
+// through it, or the host of a SignalClient, with a socket that a RawHost accepted.
 internal sealed class RawConnection : IDisposable
 {
     private readonly NetworkStream _stream;
@@ -18,7 +19,8 @@ internal sealed class RawConnection : IDisposable
 
     private int _end;
 
-    private RawConnection(Socket socket)
+    // Speaks over a socket that is connected already, which the connection then owns.
+    public RawConnection(Socket socket)
     {
         _stream = new NetworkStream(socket, ownsSocket: true);
     }
@@ -50,7 +52,8 @@ internal sealed class RawConnection : IDisposable
         await _stream.WriteAsync(Encoding.ASCII.GetBytes(text), cancellationToken);
     }
 
-    // The next line the host wrote, without its \r\n; null once the host has ended the connection after its last line.
+    // The next line the other end wrote, without its \r\n; null once the other end has ended the connection after its
+    // last line.
     public async Task<string?> ReadLineAsync(CancellationToken cancellationToken)
     {
         while (true)
@@ -59,7 +62,7 @@ internal sealed class RawConnection : IDisposable
 
             if (lineEnd >= 0)
             {
-                Assert.True(lineEnd > _start && _received[lineEnd - 1] == '\r', "A line of the host ends with \\r\\n.");
+                Assert.True(lineEnd > _start && _received[lineEnd - 1] == '\r', "A line of the protocol ends with \\r\\n.");
 
                 string line = Encoding.ASCII.GetString(_received, _start, lineEnd - 1 - _start);
                 _start = lineEnd + 1;
@@ -76,7 +79,7 @@ internal sealed class RawConnection : IDisposable
 
             if (received == 0)
             {
-                Assert.True(_end == 0, "The host ended the connection inside a line.");
+                Assert.True(_end == 0, "The other end ended the connection inside a line.");
 
                 return null;
             }
@@ -90,9 +93,10 @@ internal sealed class RawConnection : IDisposable
         _stream.Dispose();
     }
 
-    // A reset ends the connection as a close does: the host disposes the socket of a connection that it ends for
-    // silence or for its own dispose at once, while it still receives on it, and .NET resets a connection whose socket
-    // is disposed with a receive pending.
+    // A reset ends the connection as a close does: the other end may dispose its socket at once while it still
+    // receives on it — the host when it ends a connection for silence or for its own dispose, the client when it ends
+    // an attempt, declares its host dead or is disposed — and .NET resets a connection whose socket is disposed with a
+    // receive pending.
     private async Task<int> ReceiveAsync(CancellationToken cancellationToken)
     {
         try
