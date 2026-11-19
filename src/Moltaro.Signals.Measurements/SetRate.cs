@@ -2,11 +2,11 @@ using System.Diagnostics;
 
 namespace Moltaro.Signals.Measurements;
 
-// Sets per second in-process, most of them coalesced, as the owner answered PQ2. Each publishing thread calls SetAsync
-// on ten single-segment keys of its own, each with one group whose member waits again only after a hundred sets on its
-// key, so that it wakes for at most one set in a hundred. One thread is judged against 100,000 sets per second;
-// several threads, setting on one host at the same time, are reported only. The rate is counted over a fixed time
-// after a warm-up.
+// Sets per second in-process, most of them coalesced, as concept section 11 defines them. Each publishing thread calls
+// SetAsync on ten single-segment keys of its own, each with one group whose member waits again only after a hundred
+// sets on its key, so that it wakes for at most one set in a hundred. One thread is judged against 100,000 sets per
+// second; several threads, setting on one host at the same time, are reported only. The rate is counted over a fixed
+// time after a warm-up.
 internal static class SetRate
 {
     private const int KeysPerThread = 10;

@@ -5,7 +5,7 @@ delivered over several sprints.
 
 | Epic | Result | Status |
 | --- | --- | --- |
-| 1. [First release](epic-1-first-release.md) | The library as the [concept](../concept.md) describes it, published on nuget.org as its first version | Approved by the owner on 18 November 2026; in progress, see the status of its sprints |
+| 1. First release | The library as the [concept](../concept.md) describes it, published on nuget.org as its first version | Finished on 19 November 2026 with version 0.1.0 |
 
 ## The repository as it is set up
 

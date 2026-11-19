@@ -306,7 +306,7 @@ what was adapted and what was only taken as an idea.
   a merge, a release tag. A standing permission of the owner, as
   [branches and releases](branches.md#who-does-what) describes it, covers the push, the
   pull request and the merge of a closed sprint while no decision of the owner is open;
-  nothing covers a release tag.
+  a release tag needs the owner's word for that version.
 
 A measured fall of performance is not by itself a reason to stop (the owner, 16 November
 2026). First the cause is found, with a control or a profile. Then it is compared with

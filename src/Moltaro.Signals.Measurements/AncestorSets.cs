@@ -2,7 +2,7 @@ using System.Diagnostics;
 
 namespace Moltaro.Signals.Measurements;
 
-// What the ancestors of a key cost a set (decision O7): sets of a key of three segments whose only members are on its
+// What the ancestors of a key cost a set (concept D2): sets of a key of three segments whose only members are on its
 // first segment, against sets of a key of one segment with a member of its own. The members are busy, so every set
 // after the first finds a signal pending, as most sets do.
 internal static class AncestorSets

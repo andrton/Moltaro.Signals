@@ -4,10 +4,10 @@ namespace Moltaro.Signals.Measurements;
 
 // The set to wake: the time from a SetAsync to the first line of the woken member's code, which runs on the thread
 // pool, and the bytes allocated per wake of a waiting member, on every thread of the process. In-process it is judged
-// at p50 under 50 us; over loopback, from a client to a member on another client of a host in the same process, at
-// p99 under 1 ms (PQ2). The publisher sets only once the member has asked to wait, so every set wakes it. Over
-// loopback the member's WAIT and the publisher's SET travel on two connections, so the host may apply the set first
-// and leave the signal pending for the WAIT; either way the set wakes the member.
+// at p50 under 50 us; over loopback, from a client to a member on another client of a host in the same process, at p99
+// under 1 ms (concept section 11). The publisher sets only once the member has asked to wait, so every set wakes it.
+// Over loopback the member's WAIT and the publisher's SET travel on two connections, so the host may apply the set
+// first and leave the signal pending for the WAIT; either way the set wakes the member.
 internal static class SetToWake
 {
     private const int InProcessWakes = 100_000;
