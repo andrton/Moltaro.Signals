@@ -575,16 +575,16 @@ public sealed partial class SignalClient
         private bool Beat(long now)
         {
             TimeProvider timeProvider = _client._timeProvider;
-            TimeSpan sinceReceived = SignalChecks.Elapsed(timeProvider, Volatile.Read(ref _lastReceivedTimestamp), now);
+            TimeSpan sinceReceived = Timing.Elapsed(timeProvider, Volatile.Read(ref _lastReceivedTimestamp), now);
 
             if (sinceReceived >= _client._deadPeerTimeout)
             {
                 return false;
             }
 
-            TimeSpan sinceSent = SignalChecks.Elapsed(timeProvider, _output.LastSentTimestamp, now);
+            TimeSpan sinceSent = Timing.Elapsed(timeProvider, _output.LastSentTimestamp, now);
             TimeSpan sincePing = _lastPingTimestamp is { } pinged
-                ? SignalChecks.Elapsed(timeProvider, pinged, now)
+                ? Timing.Elapsed(timeProvider, pinged, now)
                 : TimeSpan.MaxValue;
 
             // How long the connection has been quiet on the side that was quiet longer, unless a PING went out since.
@@ -606,7 +606,7 @@ public sealed partial class SignalClient
             TimeSpan untilPing = _client._heartbeatInterval - quiet;
             TimeSpan untilDead = _client._deadPeerTimeout - sinceReceived;
 
-            _timer.Change(SignalChecks.DueTime(untilPing < untilDead ? untilPing : untilDead), Timeout.InfiniteTimeSpan);
+            _timer.Change(Timing.DueTime(untilPing < untilDead ? untilPing : untilDead), Timeout.InfiniteTimeSpan);
 
             return true;
         }

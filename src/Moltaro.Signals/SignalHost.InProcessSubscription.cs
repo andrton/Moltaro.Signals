@@ -37,7 +37,7 @@ public sealed partial class SignalHost
         {
             // Read before the lock is taken, because the TimeProvider is code of the application.
             TimeSpan? dueTime = until is { } deadline
-                ? SignalChecks.TimeUntil(deadline, _host._timeProvider.GetUtcNow())
+                ? Timing.TimeUntil(deadline, _host._timeProvider.GetUtcNow())
                 : null;
             TaskCompletionSource<SignalWaitResultEnum>? waiter = null;
 
@@ -219,7 +219,7 @@ public sealed partial class SignalHost
                     return;
                 }
 
-                TimeSpan? rest = SignalChecks.TimeUntil(deadline, now);
+                TimeSpan? rest = Timing.TimeUntil(deadline, now);
 
                 if (rest != TimeSpan.Zero)
                 {

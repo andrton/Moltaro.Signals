@@ -605,12 +605,12 @@ public sealed partial class SignalHost
                     // The last receive is read here, so that a HELLO handled meanwhile counts with the receive that
                     // brought it; one taken after the present counts as taken at it.
                     long silentSince = beforeHello ? _acceptedTimestamp : Volatile.Read(ref _lastReceivedTimestamp);
-                    TimeSpan rest = _host._deadPeerTimeout - SignalChecks.Elapsed(_host._timeProvider, silentSince, now);
+                    TimeSpan rest = _host._deadPeerTimeout - Timing.Elapsed(_host._timeProvider, silentSince, now);
 
                     if (rest > TimeSpan.Zero)
                     {
                         // The rest is at most DeadPeerTimeout, so its due time is within the longest timer.
-                        _timer.Change(SignalChecks.DueTime(rest), Timeout.InfiniteTimeSpan);
+                        _timer.Change(Timing.DueTime(rest), Timeout.InfiniteTimeSpan);
 
                         return;
                     }
