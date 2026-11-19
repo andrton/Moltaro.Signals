@@ -99,13 +99,13 @@ only documents: a required check that does not run would block the pull request.
   library, the version is `0.x.y`, and a release is a regular version, not a pre-release
   (concept D13, D15).
 - **A release is made by the owner**, or by an agent that the owner tells to make it, for
-  that version: with `main` green, tag the commit and push the tag. The
-  [Publish](../../.github/workflows/publish.yml) workflow builds, tests and packs that
-  commit and pushes the packages to nuget.org; it refuses a tag that is not on `main`.
-  There is no stored API key: the workflow signs in through nuget.org Trusted Publishing.
-- **A local build** takes its version from `<Version>` in `src/Directory.Build.props`. The
-  change that prepares a release sets it to the next patch with `-dev`, for example
-  `0.1.2-dev` for 0.1.1, so that a local build never sorts below a release.
+  that version. First a pull request sets `<Version>` in `src/Directory.Build.props`, the
+  version of local builds, to the next patch with `-dev`, for example `0.1.2-dev` for
+  0.1.1, so that a local build never sorts below a release. Then, with `main` green, tag
+  the commit and push the tag. The [Publish](../../.github/workflows/publish.yml) workflow
+  builds, tests and packs that commit with the version of the tag and pushes the packages
+  to nuget.org; it refuses a tag that is not on `main`. There is no stored API key: the
+  workflow signs in through nuget.org Trusted Publishing.
 - **A release tag is permanent.** The ruleset in
   [`.github/rulesets/release-tags.json`](../../.github/rulesets/release-tags.json) refuses
   moving or deleting a `v*` tag. A wrong release is followed by a new version, never by a

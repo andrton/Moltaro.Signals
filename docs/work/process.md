@@ -15,7 +15,7 @@ when the first such decision is.
 | Track | For | How |
 | --- | --- | --- |
 | **Full** | Changes to the core library and to the public contract | Everything below |
-| **Refactoring** | The refactoring sprint of an epic: the whole code base, with no change of behavior | [A refactoring sprint](#a-refactoring-sprint) |
+| **Refactoring** | The refactoring sprint of an epic, or one while no epic is open: the whole code base, with no change of behavior | [A refactoring sprint](#a-refactoring-sprint) |
 | **Light** | Documentation, samples, build files, small fixes that change no behavior | One agent, the usual checks, and an independent review |
 
 The coordinator picks the track for each sprint and the plan records it. When in doubt, full.
