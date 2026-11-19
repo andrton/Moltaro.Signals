@@ -51,6 +51,7 @@ options state (decision O5).
 | O10 | **O1 covers this epic's documents too.** The standing permission of O1 also covers the pull requests of this epic's documents — the plan, the contracts of later stages, light-track changes — once they are reviewed and, where the process asks for it, approved by the owner. It never covers the release change, which stays with the owner, or what O1 excludes |
 | O11 | **The one term is signal.** A set gives each group with members on a key a *signal*; one that no member has taken yet is *pending* (at most one per (key, group)); a busy member that leaves *hands its signal on*. "Event" for that state, "raised", "re-raise" and "auto-reset event" leave the documentation, the contract and the code |
 | O12 | **Narrows O4.** The owner agrees only the public contract before it is committed, and any change of it: the public API of both packages, the protocol (`docs/protocol.md`), the metric names and the log categories. Internal contracts — the types the tests address that are not public — are approved by the coordinator after the independent review. The owner arbitrates what the coordinator cannot settle and decides any change of a guarantee or a decision of the concept |
+| O13 | **CI also runs on Linux ARM64** (19 November 2026), because the memory ordering of x64 hides faults of the reads the library makes without a lock. The job is not a required check of `main`; like every job, it must pass before a sprint is merged |
 
 ## Requirements
 
@@ -1598,6 +1599,9 @@ approval of this plan, with PQ2 and PQ3 answered.
   - The documents step edits concept §3, rule 6, and D8, and the bullet of `README.md`
     on sets, as the owner answered PQ3, rows a, f and g. The remote samples
     run to the end; `README.md` says the client works.
+- **Small changes made on this branch** (`process.md`, "Small changes during a sprint"):
+  a CI job that runs the build and the tests on Linux ARM64, not a required check of
+  `main` (O13, the owner).
 - **Out of scope.** The hosting package; TLS; anything of concept §9.
 
 ### S6 · The hosting package, the samples and the first release

@@ -41,3 +41,20 @@ jobs:
           global-json-file: src/global.json
       - run: dotnet build --configuration Release
       - run: dotnet test --configuration Release --no-build
+
+  # The same lane on Linux ARM64. Several reads of the library take no lock (the state of
+  # a dispose, a completed wait) and work passes between a connection's reader and the
+  # thread pool; the memory ordering of x64 hides a class of faults that ARM64 does not,
+  # and this job runs the suite where they show. Not a required check of main. A failure
+  # here that the other jobs do not show is a finding about the library first and about the
+  # test second.
+  arm64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: src/global.json
+      - run: dotnet build --configuration Release
+      - run: dotnet test --configuration Release --no-build
