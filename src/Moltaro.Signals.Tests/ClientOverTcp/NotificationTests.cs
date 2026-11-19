@@ -1,5 +1,5 @@
 using System.Threading.Channels;
-using Moltaro.Signals.Tests.HostOverTcp;
+using Moltaro.Signals.Tests.RawProtocol;
 using Moltaro.Signals.TestSupport;
 
 namespace Moltaro.Signals.Tests.ClientOverTcp;

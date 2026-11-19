@@ -1,9 +1,10 @@
+using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using Moltaro.Signals.TestSupport;
 
-namespace Moltaro.Signals.Tests.HostOverTcp;
+namespace Moltaro.Signals.Tests.RawProtocol;
 
 // One end of a connection that speaks the protocol by hand over a loopback socket: it sends the text a test writes,
 // each \r\n included, and reads the lines the other end writes, one at a time. A test is the client of a SignalHost
@@ -86,6 +87,21 @@ internal sealed class RawConnection : IDisposable
 
             _end += received;
         }
+    }
+
+    // Reads the next line of a client, whose ids the client chooses: it has to be the verb, an id and then the rest,
+    // such as "SET", an id and "jobs". Returns the id.
+    public async Task<long> ReadIdAsync(string verb, string rest, CancellationToken cancellationToken)
+    {
+        string? line = await ReadLineAsync(cancellationToken);
+
+        Assert.NotNull(line);
+        Assert.StartsWith($"{verb} ", line);
+        Assert.EndsWith($" {rest}", line);
+
+        string id = line[(verb.Length + 1)..^(rest.Length + 1)];
+
+        return long.Parse(id, NumberStyles.None, CultureInfo.InvariantCulture);
     }
 
     public void Dispose()
