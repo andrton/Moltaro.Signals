@@ -1,8 +1,7 @@
 # Moltaro.Signals — concept
 
-Status: agreed concept, 18 November 2026. The public contract exists in code; the host
-works inside its own process and listens over TCP. [README.md](../README.md) says what
-works today.
+Status: agreed concept, 18 November 2026. The host and the client exist in code; the
+hosting package does not yet. [README.md](../README.md) says what works today.
 
 ## 1. Where it comes from
 
@@ -86,7 +85,8 @@ Groups give both delivery styles with one rule:
    come back"*. At most one pass runs and at most one more is due per member, and at most
    one signal is pending per group on a key; nothing accumulates.
 6. **Joining and reconnecting count as a signal.** The first Wait after subscribing or
-   after a reconnect returns at once with `Joined`; the member does one full pass. This is
+   after a reconnect returns `Joined` as soon as the host has opened the subscription; at
+   once when it is open. The member does one full pass. This is
    what makes the host stateless: after a host restart nothing is lost.
 7. **Leaving while busy hands the signal on.** If a busy member disconnects or unsubscribes
    before its next Wait, the host hands its signal on to its group on its key, as rule 1
@@ -203,7 +203,7 @@ documented in the code.
 | D5 | Joining and reconnecting return `Joined` once | The host can be memory-only and restart freely |
 | D6 | Embedded host, one per deployment, no cluster | The process that does the background work is the natural owner; nothing else to run |
 | D7 | Persistent TCP connection, text line protocol, 1 s / 3 s heartbeats | Liveness is visible in seconds; trivial to debug and to implement in any language |
-| D8 | Set returns live group count; `Unavailable` when disconnected; never blocks | Callers answer immediately instead of waiting for timeouts |
+| D8 | Set returns the live group count; `Unavailable` at once when not connected; it never waits for a connection, and a connected client waits only for the host's answer, bounded by the dead-peer time | Callers answer at once instead of waiting for a host that is gone |
 | D9 | Shared token in `HELLO`; bind address configurable | Enough for an internal network; TLS is planned, not v1 |
 | D10 | Core package without dependencies plus a thin hosting/DI package | Same split as other Moltaro libraries; easy to embed |
 | D11 | .NET 10, Apache-2.0, public GitHub repository, English documentation | Matches the sibling projects; usable and showable by anyone |

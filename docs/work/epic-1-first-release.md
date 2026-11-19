@@ -1,7 +1,7 @@
 # Epic 1: First release
 
 **Status:** the plan and its contract were approved by the owner on 18 November 2026 (O4);
-S1 to S4 are done; S5 is next.
+S1 to S5 are done; S6 is next.
 
 ## Goal
 
@@ -51,6 +51,7 @@ options state (decision O5).
 | O10 | **O1 covers this epic's documents too.** The standing permission of O1 also covers the pull requests of this epic's documents — the plan, the contracts of later stages, light-track changes — once they are reviewed and, where the process asks for it, approved by the owner. It never covers the release change, which stays with the owner, or what O1 excludes |
 | O11 | **The one term is signal.** A set gives each group with members on a key a *signal*; one that no member has taken yet is *pending* (at most one per (key, group)); a busy member that leaves *hands its signal on*. "Event" for that state, "raised", "re-raise" and "auto-reset event" leave the documentation, the contract and the code |
 | O12 | **Narrows O4.** The owner agrees only the public contract before it is committed, and any change of it: the public API of both packages, the protocol (`docs/protocol.md`), the metric names and the log categories. Internal contracts — the types the tests address that are not public — are approved by the coordinator after the independent review. The owner arbitrates what the coordinator cannot settle and decides any change of a guarantee or a decision of the concept |
+| O13 | **CI also runs on Linux ARM64** (19 November 2026), because the memory ordering of x64 hides faults of the reads the library makes without a lock. The job is not a required check of `main`; like every job, it must pass before a sprint is merged |
 
 ## Requirements
 
@@ -90,7 +91,7 @@ The epic is done when all of the following hold.
    the [development process](process.md#a-sprint-on-the-full-track), each with its reason.
 3. The public surface in code is the one written in [The public contract](#the-public-contract),
    with the changes the owner agreed to during the epic and nothing else.
-4. `dotnet build` and `dotnet test` pass from `src` on both CI jobs, and
+4. `dotnet build` and `dotnet test` pass from `src` on every CI job, and
    `dotnet format --verify-no-changes` on the `build` job. The samples run to the end, and
    the code in `README.md` is the code of the samples.
 5. Every figure of [Measured results](#measured-results) is recorded on the final build,
@@ -121,6 +122,10 @@ not committed. S6 moves the final figures into `README.md`.
 | S3 | `SET` lines applied per second from one connection, pipelined over loopback | 0.73 million | Reported | The same | 18 November 2026 |
 | S3 | Allocated per `SET` over loopback | 0.7 bytes | Reported | The same | 18 November 2026 |
 | S3 | In-process set to wake, again on the build of S3 | p50 1.4 µs, p99 2.4 µs | p50 under 50 µs: met | The same | 18 November 2026 |
+| S5 | Loopback set to wake, from one client to a member on another, 50,000 wakes | p50 41 µs, p99 100 µs, maximum 1.1 ms | p99 under 1 ms: met | The same | 19 November 2026 |
+| S5 | Allocated per remote wake, with its set and the next wait, the host's included | 768 bytes | Reported | The same | 19 November 2026 |
+| S5 | Sets per second from one client with 1 / 8 / 64 concurrent callers | 21,000 / 63,000 / 521,000 | Reported | The same | 19 November 2026 |
+| S5 | Allocated per remote set with 1 / 8 / 64 callers | 384 / 164 / 106 bytes | Reported | The same | 19 November 2026 |
 
 Rates and latencies on one laptop with mixed core types vary between runs, by a factor of
 five in the review of S2; every judged target was met in every run. The allocation and
@@ -614,10 +619,11 @@ The `ISignals` of a process other than the host's, over one persistent TCP conne
   the token and ends within `DeadPeerTimeout`. When the host accepts, the client sends the
   reopening of every open subscription and only then reports `Connected`, so a request
   made after the change to `Connected` reaches the host after those subscriptions; each
-  subscription is open, and its wait returns `Joined`, once the host answered it. When
-  the host refuses or no host answers, the client stays `Disconnected` and tries again
-  with backoff. Errors: `InvalidOperationException` when started before;
-  `ObjectDisposedException`.
+  subscription is open, and its wait returns `Joined`, once the host answered it.
+  `State` is `Connected` before any `Joined` of that connection; the notification of
+  `Connected` is not ordered against it. When the host refuses or no host answers, the
+  client stays `Disconnected` and tries again with backoff. Errors:
+  `InvalidOperationException` when started before; `ObjectDisposedException`.
 - **Liveness.** While connected, the client sends `PING` when it has sent nothing, or
   received nothing, for `HeartbeatInterval`, and at most one `PING` in that time; it
   declares the connection dead when it has received nothing for `DeadPeerTimeout`. A
@@ -848,7 +854,7 @@ reason, and it goes to the owner as a change of the contract.
   (its current licences are not permissive), Valkey can stand in for it. The report is
   brief, given in the conversation and not written to a file; the planner and the
   coordinator read it before the contract step ends.
-- **Tests.** One test lane: `dotnet test` from `src`, no service needed, on both CI jobs.
+- **Tests.** One test lane: `dotnet test` from `src`, no service needed, on every CI job.
   The test framework is xUnit.net v3 (`xunit.v3`) on Microsoft.Testing.Platform, which S1
   names in `src/global.json` as `"test": { "runner": "Microsoft.Testing.Platform" }`; the
   fake clock is `FakeTimeProvider` of `Microsoft.Extensions.TimeProvider.Testing`. Loopback
@@ -912,7 +918,7 @@ S1 contract ── S2 signal delivery, in-process ── S3 protocol, host over 
 | S2 | Signal delivery and the in-process host | Full | Done, 18 November 2026: internal contract approved by the owner after 4 review rounds; sprint review 3 rounds |
 | S3 | The protocol, its codec and the host over TCP | Full | Done, 18 November 2026: protocol and internal contract reviewed in 3 rounds and approved by the owner; sprint review 2 rounds |
 | S4 | Refactoring of the code base after S3 | Refactoring | Done, 18 November 2026: 1 review round |
-| S5 | The remote client: liveness and reconnection | Full | Not started |
+| S5 | The remote client: liveness and reconnection | Full | Done, 19 November 2026: 3 review rounds |
 | S6 | The hosting package, the samples and the first release | Full | Not started |
 
 ### S1 · The public contract, the projects and the test lane
@@ -1501,32 +1507,52 @@ approval of this plan, with PQ2 and PQ3 answered.
 
 - **Goal.** Code in another process uses `ISignals` with the same semantics as in the host
   process: a client connects, sets without ever waiting for a connection, subscribes and
-  waits, knows
-  within seconds when the host is gone, reconnects by itself and returns `Joined` to
-  every member afterwards.
+  waits, knows within seconds when the host is gone, reconnects by itself and returns
+  `Joined` to every member afterwards.
 - **Contract.**
   - *Public, from S1, now working:* every member of `SignalClient` and of its
     subscriptions, by the rules of [Notifications](#notifications) for `StateChanged`.
-  - *Internal:* none is expected. The tests use the public API, and raw protocol lines
-    for a test host that misbehaves on purpose or holds back its answers. If the study
-    proposes internal types that tests should address, the planner writes them into this
-    brief and the coordinator approves them after the independent review (O12) before
-    the contract step; the contract author's work is then committed after the
-    coordinator's approval. Without such types the sprint has no contract step.
-- **Study.** Sources, for example: the connection, reconnection and ping handling of the
-  NATS .NET client (Apache-2.0); the heartbeats and connection events of
-  StackExchange.Redis (MIT); how Microsoft.Data.SqlClient (MIT) confirms the cancellation
-  of a running command with the server. Questions:
-  1. How requests share one connection: correlating replies, completing callers outside
-     locks and off the connection's reader, what happens to the requests in flight when
-     the connection drops.
-  2. When a heartbeat is sent and what counts as traffic, with `TimeProvider`.
-  3. How the client reconnects and reopens its subscriptions before the change to
-     `Connected`, and how backoff is timed.
-  4. How ending a wait with `UNWAIT` is decided against a `SIG` that crosses it.
-  5. How notifications are delivered in order, outside locks, without the connection
-     waiting for a handler and without a dispose waiting for one.
-  6. How one attempt, TCP connect and `HELLO`, is bounded by `DeadPeerTimeout`.
+  - *Internal:* none. The tests use the public API, and raw protocol lines for a test
+    host that misbehaves on purpose or holds back its answers. So S5 has no contract
+    step: the tests step comes first. The implementer writes in the documentation of
+    `SignalClient.Start` the decided sentence of Q1 of the
+    [open questions](open-questions.md): `State` is `Connected` before any `Joined` of
+    that connection, and the notification of `Connected` is not ordered against it.
+- **Study** (done, ideas only, `THIRD-PARTY-NOTICES.md` unchanged; the public contract and
+  the protocol need no change). Sources at pinned commits: nats-io/nats.net v3.4.0
+  (`b268b35f9cbd0537088781a78596badcfe5c174c`, Apache-2.0); StackExchange.Redis 3.4.35
+  (`510f791e70158665d7e8207c84d32d0a2b2a2792`, MIT); dotnet/SqlClient v7.1.2
+  (`b1dd9db72cd9e6eb9fc83ca308558e73b57dd449`, MIT). Decisions the implementer and the
+  test author share:
+  - **Replies** are matched by `<rid>` and `<sid>`, taken from one counter of the client
+    and never reused; a subscription keeps its `<sid>` across connections.
+  - **The gate.** Replies are matched, and requests added, only under the client's lock
+    while the connection is not ending. The section that begins the end takes out the
+    pending sets, which complete with `Unavailable` after the lock.
+  - **Completions** go through a `TaskCompletionSource` with
+    `RunContinuationsAsynchronously`, after the lock.
+  - **Unknown ids.** An id the client does not know is ignored. An answer for a known
+    `<sid>` with nothing outstanding closes the connection with a reason.
+  - **One timer per connection**, re-armed for the earlier of the dead peer at the last
+    receive plus `DeadPeerTimeout` and the `PING` when it is due. Any bytes received are
+    traffic; no `PING` goes before `OK 0`.
+  - **Reconnecting.** One loop on the thread pool runs the attempts. The backoff doubles
+    up to `MaxReconnectDelay`, is reset by an accepted attempt and is waited through the
+    `TimeProvider`. One attempt, connect plus the answer to `HELLO`, is bounded by one
+    `CancellationTokenSource(DeadPeerTimeout, TimeProvider)`.
+  - **`Connected` and `Joined`** (Q1). On `OK 0`, one section under the lock writes every
+    reopening `SUB`, sets `Connected` and queues the notification; the reader handles an
+    `OK <sid>` only after that section.
+  - **`UNWAIT`** is appended under the lock. A crossing `SIG` sets a flag, and the wait
+    completes at `OK <sid>`, with `Signaled` if the flag is set.
+  - **Notifications** are queued under the lock in the order of the changes and drained by
+    one thread-pool work item. Handler exceptions are unhandled; a dispose does not wait
+    for a handler.
+  - **Placement.** Nested types of `SignalClient`, in `Outer.Nested.cs` files. The client
+    reads without waiting for its flush, since its output is bounded by its outstanding
+    requests.
+  - **Limitations.** The notification queue grows only while a handler blocks. On Unix a
+    name lookup can outlive an attempt; the client stops waiting at the deadline.
 - **To read.** [Concept](../concept.md), §3, §4, §6, §11 (18 November 2026);
   `docs/protocol.md` as S3 committed it; `AGENTS.md`, principles 2–9; this plan, "The
   public contract".
@@ -1577,6 +1603,9 @@ approval of this plan, with PQ2 and PQ3 answered.
   - The documents step edits concept §3, rule 6, and D8, and the bullet of `README.md`
     on sets, as the owner answered PQ3, rows a, f and g. The remote samples
     run to the end; `README.md` says the client works.
+- **Small changes made on this branch** (`process.md`, "Small changes during a sprint"):
+  a CI job that runs the build and the tests on Linux ARM64, not a required check of
+  `main` (O13, the owner).
 - **Out of scope.** The hosting package; TLS; anything of concept §9.
 
 ### S6 · The hosting package, the samples and the first release
@@ -1641,7 +1670,7 @@ The coordinator never creates a release tag; the release is the owner's (O1,
 [branches and releases](branches.md#releases)). Before the owner tags it, all of the
 following hold:
 
-1. S6 is closed and merged; `main` is green on both CI jobs; the release change below
+1. S6 is closed and merged; `main` is green on every CI job; the release change below
    has passed its review.
 2. No entry point throws `NotSupportedException` and no test is skipped in the Release
    run of CI; the tests of S1 pass with their assertions unchanged, except corrections of

@@ -25,7 +25,9 @@ public sealed class FakeClock : TimeProvider
 
     public override long GetTimestamp() => _time.GetTimestamp();
 
-    // Moves the time forward. Every timer that becomes due fires on the calling thread before this returns.
+    // Moves the time forward. Every timer that becomes due fires on the calling thread before this returns, as long as
+    // no other thread reads the clock or changes a timer while it runs: FakeTimeProvider then skips the timers that are
+    // due. The tests advance only after an observed event, so no such read or change is concurrent.
     public void Advance(TimeSpan delta) => _time.Advance(delta);
 
     // Completes once a timer of this clock is armed to fire at or before dueBy; at once if one already is.
@@ -47,6 +49,18 @@ public sealed class FakeClock : TimeProvider
         }
 
         return armed.Task.WaitAsync(cancellationToken);
+    }
+
+    // Whether a timer of this clock is armed to fire at or before dueBy now. A test that has waited for a timer checks
+    // with it that none is armed to fire earlier.
+    public bool IsTimerDueBy(DateTimeOffset dueBy)
+    {
+        DateTimeOffset now = GetUtcNow();
+
+        lock (_lock)
+        {
+            return IsAnyTimerDueBy(dueBy, now);
+        }
     }
 
     public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)

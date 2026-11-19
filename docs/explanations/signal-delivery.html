@@ -70,11 +70,12 @@
   <p class="lead">Moltaro.Signals · an explanation for a developer who uses the library, not a
     specification. The rule itself is <a href="../concept.md#3-semantics">concept §3, “Semantics”</a>.
     The same text without the animation is in <a href="signal-delivery.md">signal-delivery.md</a>.</p>
-  <p class="status"><b>Status, 18 November 2026.</b> Built for code inside the host process: sprint S2
-    of the first epic built the in-process host, <code>SignalHost</code> used as <code>ISignals</code>,
-    with everything this page shows. Since sprint S3 the host also listens over TCP: members in other
-    processes that speak the protocol belong to the same groups and see the same behavior.
-    <code>SignalClient</code> is not implemented yet.</p>
+  <p class="status"><b>Status, 19 November 2026.</b> Built. Sprint S2 of the first epic built the
+    in-process host, <code>SignalHost</code> used as <code>ISignals</code>, with everything this page
+    shows. Since sprint S3 the host also listens over TCP, and since sprint S5 <code>SignalClient</code>
+    is the same <code>ISignals</code> in other processes: its members belong to the same groups and see
+    the same behavior. The hosting package, <code>Moltaro.Signals.Hosting</code>, is not built
+    yet.</p>
 
   <h2>The idea</h2>
   <blockquote>A set gives each group on a key one signal: “look now”. One waiting member of the group

@@ -128,8 +128,8 @@ internal static class LineFormatter
         return End(destination, Word(destination, 0, "PING"u8));
     }
 
-    // The code words of docs/protocol.md, in lower case.
-    private static ReadOnlySpan<byte> CodeWord(ProtocolErrorEnum code)
+    // The code words of docs/protocol.md, in lower case; the client also begins the reason of a refusal with one.
+    internal static ReadOnlySpan<byte> CodeWord(ProtocolErrorEnum code)
     {
         return code switch
         {
