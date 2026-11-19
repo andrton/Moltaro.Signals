@@ -159,8 +159,8 @@
       <text x="52" y="380"><tspan class="name">Moltaro.Signals</tspan><tspan class="small" dx="10">the root of the project</tspan></text>
       <text x="52" y="404"><tspan class="b">Public contract:</tspan> ISignals, ISignalSubscription, SignalHost,</text>
       <text x="52" y="422">SignalClient, their options and their results</text>
-      <text x="52" y="446"><tspan class="b">Transport,</tspan> as nested types of SignalHost and SignalClient:</text>
-      <text x="52" y="464">the sockets, the heartbeats, the client’s reconnect</text>
+      <text x="52" y="446"><tspan class="b">Transport:</tspan> the sockets, the heartbeats, the client’s reconnect,</text>
+      <text x="52" y="464">nested in SignalHost and SignalClient, which share ConnectionOutput</text>
 
       <path class="dep" marker-end="url(#tip)" d="M158 474 L158 512"/>
       <text class="small" x="168" y="498">host only</text>
@@ -261,9 +261,10 @@
       length of a line. It knows nothing of signal delivery or sockets.</li>
     <li><b>The root, namespace <code>Moltaro.Signals</code>.</b> The public contract:
       <code>ISignals</code>, <code>ISignalSubscription</code>, <code>SignalHost</code>,
-      <code>SignalClient</code>, their options and their results. And the transport, as nested types of
-      <code>SignalHost</code> and <code>SignalClient</code>: the sockets, the heartbeats and, in the
-      client, the reconnect. On the host, the transport decodes each line of a connection with the codec,
+      <code>SignalClient</code>, their options and their results. And the transport: the sockets, the
+      heartbeats and, in the client, the reconnect, as nested types of <code>SignalHost</code> and
+      <code>SignalClient</code>, which share <code>ConnectionOutput</code>, the part that sends the lines
+      of a connection. On the host, the transport decodes each line of a connection with the codec,
       and each <code>SUB</code>, <code>WAIT</code>, <code>UNWAIT</code>, <code>UNSUB</code> and
       <code>SET</code> becomes a call of signal delivery; a signal that delivery hands to a remote member
       goes out as its <code>SIG</code> line. In the host process, <code>SignalHost</code> as

@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
@@ -13,11 +12,11 @@ public sealed partial class SignalHost
     // the codec and signal delivery together, by the rules of docs/protocol.md.
     //
     // Its reader owns its lines. It handles each complete line in one section under the host's lock, together with
-    // signal delivery, and appends the answer there; a SIG is appended in the section that woke its member, whichever
-    // connection that section serves. So the output of a connection follows the order of the decisions. A flush sends
-    // the output on the thread pool, and the reader receives again only after the output is sent: a client that does
-    // not read leaves the host holding the answers to one receive and at most one SIG per armed member, and as the
-    // host then receives nothing, the timer ends the connection.
+    // signal delivery, and appends the answer to its output there; a SIG is appended in the section that woke its
+    // member, whichever connection that section serves. So the output of a connection follows the order of the
+    // decisions. Its ConnectionOutput sends the output on the thread pool, and the reader receives again only after the
+    // output is sent: a client that does not read leaves the host holding the answers to one receive and at most one
+    // SIG per armed member, and as the host then receives nothing, the timer ends the connection.
     //
     // Its end runs once, begun under the host's lock by whichever comes first: the reader, the flush, the timer or the
     // host's dispose. From that section the connection takes no more lines and no more output.
@@ -58,19 +57,11 @@ public sealed partial class SignalHost
         // The open members by their <sid>. Guarded by the host's lock.
         private readonly Dictionary<long, RemoteMember> _members = [];
 
-        // FlushAsync as a delegate made once, so that starting a flush makes no new delegate.
-        private readonly Func<Task> _flushAsync;
+        // The lines the host writes on the connection. The host counts only what it receives, so the output takes no
+        // timestamps; a failed send ends the connection with nothing written.
+        private readonly ConnectionOutput _output;
 
         private readonly TaskCompletionSource _ended = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        // The output not sent yet, guarded by the host's lock. The flush swaps it with _sending, which only the flush
-        // touches, and at most one flush runs.
-        private ArrayBufferWriter<byte> _pending = new(BufferLength);
-
-        private ArrayBufferWriter<byte> _sending = new(BufferLength);
-
-        // The flush that runs; null when none does. Guarded by the host's lock.
-        private Task? _flush;
 
         // The timestamp of the last receive: after HELLO, the deadline of the connection is this plus DeadPeerTimeout.
         // Written by the reader and read by the timer, without the lock.
@@ -90,7 +81,7 @@ public sealed partial class SignalHost
             _socket = socket;
             _acceptedTimestamp = acceptedAt;
             _lastReceivedTimestamp = acceptedAt;
-            _flushAsync = FlushAsync;
+            _output = new ConnectionOutput(host._lock, socket, sentClock: null, sendFailed: End);
             _timer = host._timeProvider.CreateTimer(
                 static state => ((Connection)state!).OnTimer(),
                 this,
@@ -113,7 +104,7 @@ public sealed partial class SignalHost
         {
             if (!_ending)
             {
-                Write(LineFormatter.Signal(LineSpace(), sid));
+                _output.Write(LineFormatter.Signal(_output.LineSpace(), sid));
             }
         }
 
@@ -160,7 +151,7 @@ public sealed partial class SignalHost
                     // for DeadPeerTimeout at most.
                     _timer.Change(_host._deadPeerTimeout, Timeout.InfiniteTimeSpan);
 
-                    await WhenSent().ConfigureAwait(false);
+                    await _output.WhenSent().ConfigureAwait(false);
 
                     // After a shutdown a socket is closed normally, even with a receive pending.
                     try
@@ -194,38 +185,6 @@ public sealed partial class SignalHost
                 {
                     _host._connections.Add(-1);
                 }
-            }
-        }
-
-        // Under the host's lock: room for one line at the end of the pending output.
-        private Span<byte> LineSpace()
-        {
-            return _pending.GetSpan(ProtocolRules.LineRoom);
-        }
-
-        // Under the host's lock: takes the line just written into LineSpace into the pending output, and starts a flush
-        // when none runs. The flush runs on the thread pool, never inline in the section that wrote the line.
-        private void Write(int length)
-        {
-            _pending.Advance(length);
-
-            if (_flush is null)
-            {
-                // The flush serves the connection, not the code that wrote the line, so it does not capture the
-                // execution context of that code, as Start does not for the loop that accepts connections.
-                using AsyncFlowControl? flow = ExecutionContext.IsFlowSuppressed() ? null : ExecutionContext.SuppressFlow();
-
-                _flush = Task.Run(_flushAsync);
-            }
-        }
-
-        // Completes when the output written so far has been sent, with any written meanwhile, or when a send failed and
-        // ended the connection: the flush that runs, or a completed task when none does.
-        private Task WhenSent()
-        {
-            lock (_host._lock)
-            {
-                return _flush ?? Task.CompletedTask;
             }
         }
 
@@ -270,7 +229,7 @@ public sealed partial class SignalHost
                 _received.AsSpan(consumed, filled - consumed).CopyTo(_received);
                 filled -= consumed;
 
-                await WhenSent().ConfigureAwait(false);
+                await _output.WhenSent().ConfigureAwait(false);
             }
         }
 
@@ -346,7 +305,7 @@ public sealed partial class SignalHost
                 }
 
                 _helloAccepted = true;
-                Write(LineFormatter.Ok(LineSpace(), 0));
+                _output.Write(LineFormatter.Ok(_output.LineSpace(), 0));
             }
 
             _host._connections.Add(1);
@@ -379,13 +338,14 @@ public sealed partial class SignalHost
                 }
                 else if (_members.Count >= _host._maxSubscriptionsPerConnection)
                 {
-                    Write(LineFormatter.Error(LineSpace(), sid, ProtocolErrorEnum.Subscriptions, TooManySubscriptions));
+                    _output.Write(
+                        LineFormatter.Error(_output.LineSpace(), sid, ProtocolErrorEnum.Subscriptions, TooManySubscriptions));
                 }
                 else
                 {
                     _host._delivery.Open(member, key, group);
                     _members.Add(sid, member);
-                    Write(LineFormatter.Ok(LineSpace(), sid));
+                    _output.Write(LineFormatter.Ok(_output.LineSpace(), sid));
                     opened = true;
                 }
             }
@@ -432,7 +392,7 @@ public sealed partial class SignalHost
                 else if (_host._delivery.Arm(member))
                 {
                     // The member took a pending signal.
-                    Write(LineFormatter.Signal(LineSpace(), sid));
+                    _output.Write(LineFormatter.Signal(_output.LineSpace(), sid));
                     taken = true;
                 }
             }
@@ -467,7 +427,7 @@ public sealed partial class SignalHost
                 if (_members.TryGetValue(sid, out RemoteMember? member))
                 {
                     _host._delivery.EndWait(member);
-                    Write(LineFormatter.Ok(LineSpace(), sid));
+                    _output.Write(LineFormatter.Ok(_output.LineSpace(), sid));
                 }
             }
 
@@ -520,7 +480,7 @@ public sealed partial class SignalHost
 
                 outcome = _host._delivery.Set(key[..length]);
                 firstInProcess = AnswerRemoteMembers(outcome.FirstWoken, out woken);
-                Write(LineFormatter.Ok(LineSpace(), rid, outcome.Groups));
+                _output.Write(LineFormatter.Ok(_output.LineSpace(), rid, outcome.Groups));
             }
 
             _host.FinishSet(outcome, firstInProcess, woken);
@@ -537,7 +497,7 @@ public sealed partial class SignalHost
                     return false;
                 }
 
-                Write(LineFormatter.Pong(LineSpace()));
+                _output.Write(LineFormatter.Pong(_output.LineSpace()));
             }
 
             return true;
@@ -553,7 +513,7 @@ public sealed partial class SignalHost
                 return false;
             }
 
-            Write(LineFormatter.Error(LineSpace(), 0, code, text));
+            _output.Write(LineFormatter.Error(_output.LineSpace(), 0, code, text));
 
             return true;
         }
@@ -621,43 +581,6 @@ public sealed partial class SignalHost
                 }
 
                 _host.FinishClose(outcome);
-            }
-        }
-
-        // Sends the pending output until none is left, then ends under the host's lock. It swaps the buffers under the
-        // lock and sends outside it. A failed send ends the connection.
-        private async Task FlushAsync()
-        {
-            try
-            {
-                while (true)
-                {
-                    lock (_host._lock)
-                    {
-                        if (_pending.WrittenCount == 0)
-                        {
-                            _flush = null;
-
-                            return;
-                        }
-
-                        (_pending, _sending) = (_sending, _pending);
-                    }
-
-                    ReadOnlyMemory<byte> unsent = _sending.WrittenMemory;
-
-                    while (!unsent.IsEmpty)
-                    {
-                        int sent = await _socket.SendAsync(unsent, SocketFlags.None).ConfigureAwait(false);
-                        unsent = unsent[sent..];
-                    }
-
-                    _sending.ResetWrittenCount();
-                }
-            }
-            catch (Exception exception) when (exception is SocketException or ObjectDisposedException)
-            {
-                End();
             }
         }
 

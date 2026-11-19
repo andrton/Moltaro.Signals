@@ -87,8 +87,9 @@ the transport ties the two together.
   the length of a line. It knows nothing of signal delivery or sockets.
 - **The root, namespace `Moltaro.Signals`.** The public contract: `ISignals`,
   `ISignalSubscription`, `SignalHost`, `SignalClient`, their options and their results. And
-  the transport, as nested types of `SignalHost` and `SignalClient`: the sockets, the
-  heartbeats and, in the client, the reconnect. On the host, the transport decodes each line
+  the transport: the sockets, the heartbeats and, in the client, the reconnect, as nested
+  types of `SignalHost` and `SignalClient`, which share `ConnectionOutput`, the part that
+  sends the lines of a connection. On the host, the transport decodes each line
   of a connection with the codec, and each `SUB`, `WAIT`, `UNWAIT`, `UNSUB` and `SET`
   becomes a call of signal delivery; a signal that delivery hands to a remote member goes
   out as its `SIG` line. In
