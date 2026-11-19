@@ -28,6 +28,26 @@ public sealed class HostRegistrationTests
     }
 
     [Fact(Skip = SkipReason.NotImplemented)]
+    public async Task Configure_runs_when_the_host_is_first_resolved_and_wrong_options_throw_there()
+    {
+        var services = new ServiceCollection();
+        bool configured = false;
+
+        // Leaves ListenEndPoint unset, which the constructor of the host refuses.
+        services.AddSignalHost(options =>
+        {
+            configured = true;
+            options.Token = LoopbackOptions.Token;
+        });
+        bool configuredByTheCall = configured;
+        await using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.Throws<ArgumentException>("ListenEndPoint", () => provider.GetRequiredService<SignalHost>());
+        Assert.False(configuredByTheCall);
+        Assert.True(configured);
+    }
+
+    [Fact(Skip = SkipReason.NotImplemented)]
     public async Task A_hosted_service_registered_after_AddSignalHost_finds_the_port_bound_when_it_starts()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;

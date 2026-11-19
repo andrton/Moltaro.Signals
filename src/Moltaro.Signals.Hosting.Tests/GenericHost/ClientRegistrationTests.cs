@@ -7,7 +7,7 @@ using Moltaro.Signals.TestSupport;
 namespace Moltaro.Signals.Hosting.Tests.GenericHost;
 
 // AddSignalClient in a container and in a generic host, against a host of this process over loopback: what it
-// registers, when the client connects, and its log lines.
+// registers, when the client connects, when it is disposed, and its log lines.
 public sealed class ClientRegistrationTests
 {
     private const string ClientCategory = "Moltaro.Signals.SignalClient";
@@ -27,6 +27,26 @@ public sealed class ClientRegistrationTests
     }
 
     [Fact(Skip = SkipReason.NotImplemented)]
+    public async Task Configure_runs_when_the_client_is_first_resolved_and_wrong_options_throw_there()
+    {
+        var services = new ServiceCollection();
+        bool configured = false;
+
+        // Leaves HostEndPoint unset, which the constructor of the client refuses.
+        services.AddSignalClient(options =>
+        {
+            configured = true;
+            options.Token = LoopbackOptions.Token;
+        });
+        bool configuredByTheCall = configured;
+        await using ServiceProvider provider = services.BuildServiceProvider();
+
+        Assert.Throws<ArgumentException>("HostEndPoint", () => provider.GetRequiredService<SignalClient>());
+        Assert.False(configuredByTheCall);
+        Assert.True(configured);
+    }
+
+    [Fact(Skip = SkipReason.NotImplemented)]
     public async Task The_client_connects_when_the_application_starts()
     {
         CancellationToken cancellationToken = TestContext.Current.CancellationToken;
@@ -40,6 +60,28 @@ public sealed class ClientRegistrationTests
         Assert.Equal(SignalWaitResultEnum.Joined, await lane.WaitAsync(until: null, cancellationToken));
 
         await app.StopAsync(cancellationToken);
+    }
+
+    [Fact(Skip = SkipReason.NotImplemented)]
+    public async Task The_client_outlives_the_hosted_services_and_is_disposed_with_the_container()
+    {
+        CancellationToken cancellationToken = TestContext.Current.CancellationToken;
+        await using var signalHost = new SignalHost(LoopbackOptions.Host());
+        signalHost.Start();
+        IHost app = CreateBuilder(signalHost.LocalEndPoint!, LoopbackOptions.Token).Build();
+        await app.StartAsync(cancellationToken);
+        SignalClient client = app.Services.GetRequiredService<SignalClient>();
+        using ISignalSubscription lane = client.Subscribe("jobs", "workers");
+
+        // Joined comes once the client is connected.
+        await lane.WaitAsync(until: null, cancellationToken);
+
+        await app.StopAsync(cancellationToken);
+        SignalConnectionStateEnum afterStop = client.State;
+        app.Dispose();
+
+        Assert.Equal(SignalConnectionStateEnum.Connected, afterStop);
+        Assert.Throws<ObjectDisposedException>(() => client.Subscribe("jobs", "workers"));
     }
 
     [Fact(Skip = SkipReason.NotImplemented)]

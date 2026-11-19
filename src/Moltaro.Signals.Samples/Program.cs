@@ -5,18 +5,10 @@ using Moltaro.Signals.Samples;
 // says where it stops while a member it uses is not implemented yet.
 if (args is ["host"])
 {
-    using var stop = new CancellationTokenSource();
-
-    Console.CancelKeyPress += (_, press) =>
-    {
-        press.Cancel = true;
-        stop.Cancel();
-    };
-
     await RunSampleAsync(
         "A standalone host, until Ctrl+C",
         cancellationToken => StandaloneHost.RunAsync(new IPEndPoint(IPAddress.Loopback, 7420), cancellationToken),
-        stop.Token);
+        CancellationToken.None);
 
     return;
 }
