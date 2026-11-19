@@ -1,7 +1,7 @@
 # Epic 1: First release
 
 **Status:** the plan and its contract were approved by the owner on 18 November 2026 (O4);
-S1 to S5 are done; S6 is next.
+S1 to S6 are done; what remains is the release change and the owner's release.
 
 ## Goal
 
@@ -138,8 +138,8 @@ not committed. S6 moves the final figures into `README.md`.
 | S6 | Final build: `SET` lines applied per second from one connection, pipelined over loopback | 1.22 million | Reported | The same | 19 November 2026 |
 
 Rates and latencies on one laptop with mixed core types vary between runs, by a factor of
-five in the review of S2; every judged target was met in every run. The allocation and
-memory figures do not vary.
+five in the review of S2; every judged target was met in every run. Allocations vary by
+a few bytes at most, and retained memory by a few bytes.
 
 ## Open questions
 
@@ -932,7 +932,7 @@ S1 contract ── S2 signal delivery, in-process ── S3 protocol, host over 
 | S3 | The protocol, its codec and the host over TCP | Full | Done, 18 November 2026: protocol and internal contract reviewed in 3 rounds and approved by the owner; sprint review 2 rounds |
 | S4 | Refactoring of the code base after S3 | Refactoring | Done, 18 November 2026: 1 review round |
 | S5 | The remote client: liveness and reconnection | Full | Done, 19 November 2026: 3 review rounds |
-| S6 | The hosting package, the samples and the first release | Full | Not started |
+| S6 | The hosting package, the samples and the first release | Full | Done, 19 November 2026: 2 review rounds |
 
 ### S1 · The public contract, the projects and the test lane
 
@@ -1680,7 +1680,8 @@ approval of this plan, with PQ2 and PQ3 answered.
   the tests step of S6 (the coordinator): registering both, or one of them twice, in one
   container is not supported, and `ISignals` then resolves to the one registered last;
   the `HostEndPoint` of the client's log lines is the configured one, not resolved. Both
-  state limitations; neither changes behavior.
+  state limitations; neither changes behavior. The owner agreed to both on 19 November
+  2026 (O12).
 - **Out of scope.** Configuration binding helpers, health checks, anything of concept §9.
 
 ## The first release
