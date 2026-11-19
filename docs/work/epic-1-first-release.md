@@ -91,7 +91,7 @@ The epic is done when all of the following hold.
    the [development process](process.md#a-sprint-on-the-full-track), each with its reason.
 3. The public surface in code is the one written in [The public contract](#the-public-contract),
    with the changes the owner agreed to during the epic and nothing else.
-4. `dotnet build` and `dotnet test` pass from `src` on both CI jobs, and
+4. `dotnet build` and `dotnet test` pass from `src` on every CI job, and
    `dotnet format --verify-no-changes` on the `build` job. The samples run to the end, and
    the code in `README.md` is the code of the samples.
 5. Every figure of [Measured results](#measured-results) is recorded on the final build,
@@ -621,8 +621,8 @@ The `ISignals` of a process other than the host's, over one persistent TCP conne
   made after the change to `Connected` reaches the host after those subscriptions; each
   subscription is open, and its wait returns `Joined`, once the host answered it.
   `State` is `Connected` before any `Joined` of that connection; the notification of
-  `Connected` is not ordered against it. When the host refuses or no host answers, the client stays `Disconnected` and tries again
-  with backoff. Errors: `InvalidOperationException` when started before;
+  `Connected` is not ordered against it. When the host refuses or no host answers, the
+  client stays `Disconnected` and tries again with backoff. Errors: `InvalidOperationException` when started before;
   `ObjectDisposedException`.
 - **Liveness.** While connected, the client sends `PING` when it has sent nothing, or
   received nothing, for `HeartbeatInterval`, and at most one `PING` in that time; it
@@ -854,7 +854,7 @@ reason, and it goes to the owner as a change of the contract.
   (its current licences are not permissive), Valkey can stand in for it. The report is
   brief, given in the conversation and not written to a file; the planner and the
   coordinator read it before the contract step ends.
-- **Tests.** One test lane: `dotnet test` from `src`, no service needed, on both CI jobs.
+- **Tests.** One test lane: `dotnet test` from `src`, no service needed, on every CI job.
   The test framework is xUnit.net v3 (`xunit.v3`) on Microsoft.Testing.Platform, which S1
   names in `src/global.json` as `"test": { "runner": "Microsoft.Testing.Platform" }`; the
   fake clock is `FakeTimeProvider` of `Microsoft.Extensions.TimeProvider.Testing`. Loopback
@@ -1670,7 +1670,7 @@ The coordinator never creates a release tag; the release is the owner's (O1,
 [branches and releases](branches.md#releases)). Before the owner tags it, all of the
 following hold:
 
-1. S6 is closed and merged; `main` is green on both CI jobs; the release change below
+1. S6 is closed and merged; `main` is green on every CI job; the release change below
    has passed its review.
 2. No entry point throws `NotSupportedException` and no test is skipped in the Release
    run of CI; the tests of S1 pass with their assertions unchanged, except corrections of
